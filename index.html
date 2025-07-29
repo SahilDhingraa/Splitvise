@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SplitWise - Expense Splitter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: transform 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .user-list, .payment-list {
+            list-style: none;
+            margin-top: 15px;
+        }
+
+        .user-item, .payment-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .remove-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .remove-btn:hover {
+            background: #ff3742;
+        }
+
+        .balance-section {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            margin-top: 20px;
+        }
+
+        .balance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .balance-card {
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .balance-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .debt-item {
+            background: rgba(255,255,255,0.1);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .amount-positive {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .amount-negative {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .payment-details {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #888;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .balance-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💰 SplitWise</h1>
+            <p>Smart expense splitting made simple</p>
+        </div>
+
+        <div class="main-content">
+            <!-- User Management Section -->
+            <div class="section">
+                <h2>👥 Manage Users</h2>
+                <div class="form-group">
+                    <label for="userName">Add User:</label>
+                    <input type="text" id="userName" placeholder="Enter user name">
+                </div>
+                <button onclick="addUser()">Add User</button>
+                
+                <ul class="user-list" id="userList">
+                    <!-- Users will be dynamically added here -->
+                </ul>
+            </div>
+
+            <!-- Payment Recording Section -->
+            <div class="section">
+                <h2>💳 Record Payment</h2>
+                <div class="form-group">
+                    <label for="payerSelect">Who Paid:</label>
+                    <select id="payerSelect">
+                        <option value="">Select payer</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="paymentAmount">Amount:</label>
+                    <input type="number" id="paymentAmount" placeholder="0.00" step="0.01" min="0">
+                </div>
+                
+                <div class="form-group">
+                    <label for="paymentDescription">Description:</label>
+                    <input type="text" id="paymentDescription" placeholder="What was this payment for?">
+                </div>
+                
+                <div class="form-group">
+                    <label>Split Among:</label>
+                    <div>
+                        <input type="radio" id="splitAll" name="splitType" value="all" checked>
+                        <label for="splitAll" style="display: inline; margin-left: 5px;">All Users</label>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <input type="radio" id="splitSpecific" name="splitType" value="specific">
+                        <label for="splitSpecific" style="display: inline; margin-left: 5px;">Specific Users</label>
+                    </div>
+                    <div class="checkbox-group" id="specificUsers" style="display: none;">
+                        <!-- Specific user checkboxes will be added here -->
+                    </div>
+                </div>
+                
+                <button onclick="addPayment()">Record Payment</button>
+                
+                <ul class="payment-list" id="paymentList">
+                    <!-- Payments will be dynamically added here -->
+                </ul>
+            </div>
+
+            <!-- Balance Calculation Section -->
+            <div class="section balance-section">
+                <h2>⚖️ Balance Summary</h2>
+                <button onclick="calculateBalances()" style="margin-bottom: 20px;">Calculate Balances</button>
+                
+                <div class="balance-grid" id="balanceResults">
+                    <!-- Balance results will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Application State
+        let users = [];
+        let payments = [];
+        let balances = {};
+
+        // User Management Functions
+        function addUser() {
+            const userNameInput = document.getElementById('userName');
+            const userName = userNameInput.value.trim();
+            
+            if (!userName) {
+                alert('Please enter a user name');
+                return;
+            }
+            
+            if (users.includes(userName)) {
+                alert('User already exists');
+                return;
+            }
+            
+            users.push(userName);
+            userNameInput.value = '';
+            updateUserList();
+            updatePayerSelect();
+            updateSpecificUsersCheckboxes();
+        }
+
+        function removeUser(userName) {
+            const index = users.indexOf(userName);
+            if (index > -1) {
+                users.splice(index, 1);
+                // Remove user from existing payments
+                payments = payments.filter(payment => 
+                    payment.payer !== userName && 
+                    !payment.splitAmong.includes(userName)
+                );
+                updateUserList();
+                updatePayerSelect();
+                updateSpecificUsersCheckboxes();
+                updatePaymentList();
+            }
+        }
+
+        function updateUserList() {
+            const userList = document.getElementById('userList');
+            userList.innerHTML = '';
+            
+            if (users.length === 0) {
+                userList.innerHTML = '<div class="empty-state">No users added yet. Add some users to get started!</div>';
+                return;
+            }
+            
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.className = 'user-item';
+                li.innerHTML = `
+                    <span>👤 ${user}</span>
+                    <button class="remove-btn" onclick="removeUser('${user}')">Remove</button>
+                `;
+                userList.appendChild(li);
+            });
+        }
+
+        function updatePayerSelect() {
+            const payerSelect = document.getElementById('payerSelect');
+            payerSelect.innerHTML = '<option value="">Select payer</option>';
+            
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                payerSelect.appendChild(option);
+            });
+        }
+
+        function updateSpecificUsersCheckboxes() {
+            const specificUsersDiv = document.getElementById('specificUsers');
+            specificUsersDiv.innerHTML = '';
+            
+            users.forEach(user => {
+                const checkboxDiv = document.createElement('div');
+                checkboxDiv.className = 'checkbox-item';
+                checkboxDiv.innerHTML = `
+                    <input type="checkbox" id="user_${user}" value="${user}">
+                    <label for="user_${user}">${user}</label>
+                `;
+                specificUsersDiv.appendChild(checkboxDiv);
+            });
+        }
+
+        // Payment Management Functions
+        function addPayment() {
+            const payer = document.getElementById('payerSelect').value;
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+            const description = document.getElementById('paymentDescription').value.trim();
+            const splitType = document.querySelector('input[name="splitType"]:checked').value;
+            
+            if (!payer) {
+                alert('Please select who paid');
+                return;
+            }
+            
+            if (!amount || amount <= 0) {
+                alert('Please enter a valid amount');
+                return;
+            }
+            
+            if (!description) {
+                alert('Please enter a description');
+                return;
+            }
+            
+            let splitAmong = [];
+            
+            if (splitType === 'all') {
+                splitAmong = [...users];
+            } else {
+                const checkedUsers = document.querySelectorAll('#specificUsers input[type="checkbox"]:checked');
+                splitAmong = Array.from(checkedUsers).map(cb => cb.value);
+                
+                if (splitAmong.length === 0) {
+                    alert('Please select at least one user to split among');
+                    return;
+                }
+            }
+            
+            const payment = {
+                id: Date.now(),
+                payer,
+                amount,
+                description,
+                splitAmong: [...splitAmong],
+                timestamp: new Date().toLocaleString()
+            };
+            
+            payments.push(payment);
+            
+            // Clear form
+            document.getElementById('paymentAmount').value = '';
+            document.getElementById('paymentDescription').value = '';
+            document.getElementById('splitAll').checked = true;
+            document.getElementById('splitSpecific').checked = false;
+            document.getElementById('specificUsers').style.display = 'none';
+            document.querySelectorAll('#specificUsers input[type="checkbox"]').forEach(cb => cb.checked = false);
+            
+            updatePaymentList();
+        }
+
+        function removePayment(paymentId) {
+            payments = payments.filter(payment => payment.id !== paymentId);
+            updatePaymentList();
+        }
+
+        function updatePaymentList() {
+            const paymentList = document.getElementById('paymentList');
+            paymentList.innerHTML = '';
+            
+            if (payments.length === 0) {
+                paymentList.innerHTML = '<div class="empty-state">No payments recorded yet.</div>';
+                return;
+            }
+            
+            payments.forEach(payment => {
+                const li = document.createElement('li');
+                li.className = 'payment-item';
+                li.innerHTML = `
+                    <div>
+                        <strong>${payment.description}</strong>
+                        <div class="payment-details">
+                            💰 $${payment.amount.toFixed(2)} paid by ${payment.payer}
+                            <br>👥 Split among: ${payment.splitAmong.join(', ')}
+                            <br>🕒 ${payment.timestamp}
+                        </div>
+                    </div>
+                    <button class="remove-btn" onclick="removePayment(${payment.id})">Remove</button>
+                `;
+                paymentList.appendChild(li);
+            });
+        }
+
+        // Balance Calculation Functions
+        function calculateBalances() {
+            if (users.length === 0) {
+                alert('Please add users first');
+                return;
+            }
+            
+            if (payments.length === 0) {
+                alert('Please record some payments first');
+                return;
+            }
+            
+            // Initialize balances for all users
+            balances = {};
+            users.forEach(user => {
+                balances[user] = 0;
+            });
+            
+            // Calculate net balances
+            payments.forEach(payment => {
+                const splitAmount = payment.amount / payment.splitAmong.length;
+                
+                // Add amount paid to payer's balance
+                balances[payment.payer] += payment.amount;
+                
+                // Subtract each person's share from their balance
+                payment.splitAmong.forEach(user => {
+                    balances[user] -= splitAmount;
+                });
+            });
+            
+            // Calculate optimal settlements using debt simplification algorithm
+            const settlements = calculateOptimalSettlements(balances);
+            
+            displayBalanceResults(balances, settlements);
+        }
+
+        function calculateOptimalSettlements(balances) {
+            // Create arrays of creditors (positive balance) and debtors (negative balance)
+            const creditors = [];
+            const debtors = [];
+            
+            Object.entries(balances).forEach(([user, balance]) => {
+                if (balance > 0.01) { // Small threshold to handle floating point precision
+                    creditors.push({ user, amount: balance });
+                } else if (balance < -0.01) {
+                    debtors.push({ user, amount: Math.abs(balance) });
+                }
+            });
+            
+            // Sort by amount for optimal matching
+            creditors.sort((a, b) => b.amount - a.amount);
+            debtors.sort((a, b) => b.amount - a.amount);
+            
+            const settlements = [];
+            let i = 0, j = 0;
+            
+            // Match creditors with debtors
+            while (i < creditors.length && j < debtors.length) {
+                const creditor = creditors[i];
+                const debtor = debtors[j];
+                
+                const settleAmount = Math.min(creditor.amount, debtor.amount);
+                
+                if (settleAmount > 0.01) {
+                    settlements.push({
+                        from: debtor.user,
+                        to: creditor.user,
+                        amount: settleAmount
+                    });
+                }
+                
+                creditor.amount -= settleAmount;
+                debtor.amount -= settleAmount;
+                
+                if (creditor.amount < 0.01) i++;
+                if (debtor.amount < 0.01) j++;
+            }
+            
+            return settlements;
+        }
+
+        function displayBalanceResults(balances, settlements) {
+            const balanceResults = document.getElementById('balanceResults');
+            balanceResults.innerHTML = '';
+            
+            // Individual Balances Card
+            const balanceCard = document.createElement('div');
+            balanceCard.className = 'balance-card';
+            balanceCard.innerHTML = '<h3>💳 Individual Balances</h3>';
+            
+            Object.entries(balances).forEach(([user, balance]) => {
+                const balanceItem = document.createElement('div');
+                balanceItem.className = 'debt-item';
+                
+                const balanceClass = balance > 0 ? 'amount-positive' : 'amount-negative';
+                const balanceText = balance > 0 ? 
+                    `Should receive $${balance.toFixed(2)}` : 
+                    `Owes $${Math.abs(balance).toFixed(2)}`;
+                
+                balanceItem.innerHTML = `
+                    <span>👤 ${user}</span>
+                    <span class="${balanceClass}">${balanceText}</span>
+                `;
+                balanceCard.appendChild(balanceItem);
+            });
+            
+            balanceResults.appendChild(balanceCard);
+            
+            // Settlements Card
+            const settlementsCard = document.createElement('div');
+            settlementsCard.className = 'balance-card';
+            settlementsCard.innerHTML = '<h3>🔄 Recommended Settlements</h3>';
+            
+            if (settlements.length === 0) {
+                settlementsCard.innerHTML += '<div class="debt-item">✅ All balances are settled!</div>';
+            } else {
+                settlements.forEach(settlement => {
+                    const settlementItem = document.createElement('div');
+                    settlementItem.className = 'debt-item';
+                    settlementItem.innerHTML = `
+                        <span>💸 ${settlement.from} → ${settlement.to}</span>
+                        <span class="amount-negative">$${settlement.amount.toFixed(2)}</span>
+                    `;
+                    settlementsCard.appendChild(settlementItem);
+                });
+            }
+            
+            balanceResults.appendChild(settlementsCard);
+        }
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle split type radio button changes
+            document.querySelectorAll('input[name="splitType"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    const specificUsersDiv = document.getElementById('specificUsers');
+                    if (this.value === 'specific') {
+                        specificUsersDiv.style.display = 'grid';
+                    } else {
+                        specificUsersDiv.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Handle Enter key in user name input
+            document.getElementById('userName').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addUser();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

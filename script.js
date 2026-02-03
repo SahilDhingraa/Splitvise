@@ -78,13 +78,13 @@ function updateSpecificUsersCheckboxes() {
     specificUsersDiv.innerHTML = '';
 
     users.forEach(user => {
-        const checkboxDiv = document.createElement('div');
-        checkboxDiv.className = 'checkbox-item';
-        checkboxDiv.innerHTML = `
-                    <input type="checkbox" id="user_${user}" value="${user}">
-                    <label for="user_${user}">${user}</label>
-                `;
-        specificUsersDiv.appendChild(checkboxDiv);
+        const checkboxLabel = document.createElement('label');
+        checkboxLabel.className = 'checkbox-item';
+        checkboxLabel.innerHTML = `
+            <input type="checkbox" id="user_${user}" value="${user}">
+            <span>${user}</span>
+        `;
+        specificUsersDiv.appendChild(checkboxLabel);
     });
 }
 
@@ -309,8 +309,36 @@ function displayBalanceResults(balances, settlements) {
     balanceResults.appendChild(settlementsCard);
 }
 
+// Theme Management
+function initTheme() {
+    const themeToggle = document.getElementById('themeToggle');
+    const icon = themeToggle.querySelector('.material-icons');
+
+    // Check for saved theme preference, otherwise use system preference
+    const savedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+        document.body.classList.add('dark');
+        icon.textContent = 'light_mode';
+    }
+
+    themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark');
+        const isDark = document.body.classList.contains('dark');
+
+        // Update icon
+        icon.textContent = isDark ? 'light_mode' : 'dark_mode';
+
+        // Save preference
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    });
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', function () {
+    initTheme();
+
     // Handle split type radio button changes
     document.querySelectorAll('input[name="splitType"]').forEach(radio => {
         radio.addEventListener('change', function () {

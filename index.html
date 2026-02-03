@@ -5,10 +5,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SplitWise - Expense Splitter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode">
+        <span class="material-icons">dark_mode</span>
+    </button>
     <div class="container">
         <div class="header">
             <h1>💰 SplitWise</h1>
@@ -66,10 +71,6 @@
                 </div>
 
                 <button onclick="addPayment()">Record Payment</button>
-
-                <ul class="payment-list" id="paymentList">
-                    <!-- Payments will be dynamically added here -->
-                </ul>
             </div>
 
             <!-- Balance Calculation Section -->
@@ -80,6 +81,14 @@
                 <div class="balance-grid" id="balanceResults">
                     <!-- Balance results will be displayed here -->
                 </div>
+            </div>
+
+            <!-- Payment History Section -->
+            <div class="section payment-history-section">
+                <h2>📜 Payment History</h2>
+                <ul class="payment-list" id="paymentList">
+                    <!-- Payments will be dynamically added here -->
+                </ul>
             </div>
         </div>
     </div>

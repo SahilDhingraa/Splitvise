@@ -130,8 +130,8 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 1.5rem;
-    align-items: stretch;
-    /* Stretch to make columns equal height */
+    align-items: start;
+    /* Changed from stretch to start to allow natural height */
 }
 
 /* Section Cards (Mimicking shadcn Card) */
@@ -149,7 +149,7 @@ body {
 
 /* Specific scrolling for user list */
 .user-list {
-    height: 300px;
+    max-height: 261px;
     /* Constant height to match neighbor */
     overflow-y: auto;
     padding-right: 0.5rem;

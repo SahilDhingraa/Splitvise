@@ -26,6 +26,12 @@ export const metadata: Metadata = {
 
 // Tints the browser/OS chrome to match the active theme when installed.
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Lets the page extend under the notch and home indicator when installed. The
+  // CSS then pads content back out with env(safe-area-inset-*), so nothing
+  // important sits under either.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#09090b' },

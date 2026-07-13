@@ -53,15 +53,25 @@
     border-color: hsl(var(--border));
 }
 
+html {
+    /* Nothing in this layout is meant to scroll sideways. If something ever
+       exceeds the viewport, this keeps it from dragging the whole page with it. */
+    overflow-x: hidden;
+}
+
 body {
     font-family: var(--font-inter), 'Inter', sans-serif;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     min-height: 100vh;
-    padding: 2rem;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.3s ease, color 0.3s ease;
+
+    /* The env() terms are zero everywhere except an installed PWA on a notched
+       phone, where they keep content clear of the notch and home indicator. */
+    padding: max(2rem, env(safe-area-inset-top)) max(2rem, env(safe-area-inset-right))
+        max(2rem, env(safe-area-inset-bottom)) max(2rem, env(safe-area-inset-left));
 
     /* Modern Background Pattern */
     background-image: radial-gradient(hsl(var(--foreground) / 0.1) 1px, transparent 1px);
@@ -698,17 +708,144 @@ input[type="checkbox"] {
     list-style: none;
 }
 
+/* Tablet and below ------------------------------------------------------- */
 @media (max-width: 768px) {
     body {
-        padding: 1rem;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+            max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
     }
 
-    .main-content {
+    /* Both grids have minimum track widths (350px / 300px) that are wider than a
+       phone. Left alone they force a horizontal scrollbar, so collapse them to a
+       single column. */
+    .main-content,
+    .balance-grid {
         grid-template-columns: 1fr;
     }
 
+    /* iOS zooms the page in whenever you focus an input smaller than 16px, and
+       does not zoom back out. Bumping to exactly 16px is what prevents it -- this
+       is the fix for the "form fields make the page jump" problem. */
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    select {
+        font-size: 16px;
+    }
+
     .theme-toggle {
-        top: 1rem;
-        right: 1rem;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+
+    /* Keep the header clear of the theme toggle. */
+    .header {
+        margin-bottom: 2rem;
+        padding: 1rem 3rem 0;
+    }
+
+    .header h1 {
+        font-size: 1.75rem;
+    }
+
+    .header p {
+        font-size: 1rem;
+    }
+
+    .brand-logo {
+        height: 2.5rem;
+    }
+
+    .section {
+        padding: 1.25rem;
+    }
+
+    .section h2 {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .balance-card {
+        padding: 1rem;
+    }
+
+    /* Rows are `justify-content: space-between` flex containers. On a narrow
+       screen a long name plus its buttons cannot fit on one line, so let them
+       wrap instead of overflowing. */
+    .user-item,
+    .payment-item,
+    .debt-item,
+    .invite-bar,
+    .account-bar,
+    .rename-row {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* The debt amount belongs under the name, not squeezed beside it. */
+    .debt-item span:last-child {
+        margin-left: auto;
+    }
+
+    .invite-bar .secondary-btn,
+    .invite-link {
+        width: 100%;
+    }
+
+    .invite-link {
+        text-align: center;
+    }
+
+    /* The room row's link and its buttons each get a full line. */
+    .room-list .user-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .room-list .row-actions {
+        justify-content: flex-end;
+        padding-bottom: 0.75rem;
+    }
+
+    .room-link {
+        padding-bottom: 0;
+    }
+
+    .rename-row input[type="text"] {
+        /* Do not let the Save/Cancel buttons squeeze the field to nothing. */
+        flex-basis: 100%;
+    }
+
+    .room-title {
+        font-size: 1.5rem;
+    }
+}
+
+/* Small phones ----------------------------------------------------------- */
+@media (max-width: 420px) {
+    .checkbox-group {
+        /* 140px tracks leave an awkward gap at this width; one column reads better. */
+        grid-template-columns: 1fr;
+    }
+
+    .user-item,
+    .payment-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .row-actions {
+        justify-content: flex-end;
+    }
+
+    /* Tap targets: the WCAG floor is 24px and Apple recommends 44px. The inline
+       Rename/Remove buttons sit at 2rem (32px), which is fine for a mouse and
+       mean on a thumb. */
+    .remove-btn,
+    .inline-btn {
+        height: 2.25rem;
     }
 }

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline — SplitVise</title>
+    <!--
+      A plain static file, not a Next.js route. It has to be servable by the
+      service worker with no network and no session, so it cannot depend on the
+      app's JS, its CSS bundle, or an authenticated request. Everything it needs
+      is inline.
+    -->
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #ffffff;
+            --fg: #09090b;
+            --muted: #71717a;
+            --border: #e4e4e7;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #09090b;
+                --fg: #fafafa;
+                --muted: #a1a1aa;
+                --border: #27272a;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 2rem;
+            text-align: center;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+        }
+
+        img {
+            width: 96px;
+            height: auto;
+            image-rendering: pixelated;
+            opacity: 0.9;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        p {
+            color: var(--muted);
+            max-width: 32ch;
+            font-size: 0.9375rem;
+        }
+
+        button {
+            margin-top: 0.5rem;
+            height: 2.5rem;
+            padding: 0 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            background: var(--fg);
+            color: var(--bg);
+            font: inherit;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <img src="/logo.png" alt="">
+    <h1>You're offline</h1>
+    <p>
+        SplitVise needs a connection to load your rooms and balances. Reconnect and try again.
+    </p>
+    <button type="button" onclick="location.reload()">Retry</button>
+</body>
+
+</html>

@@ -1,5 +1,29 @@
--- SplitVise database schema
--- Run this once in your Supabase dashboard: SQL Editor -> New query -> paste -> Run.
+-- SplitVise database schema — the complete, only SQL you need.
+--
+-- Setting up a new Supabase project:
+--   1. Dashboard -> SQL Editor -> New query -> paste this entire file -> Run.
+--   2. Authentication -> Providers -> Email: leave "Confirm email" ON. This is
+--      not cosmetic; see the note on handle_new_user below.
+--   3. Authentication -> URL Configuration: set the Site URL, and add a redirect
+--      URL ending in /auth/callback for every origin you use -- production,
+--      http://localhost:3000, and any LAN or tunnel origin listed in
+--      next.config.ts if you test on a phone.
+--   4. Settings -> API: copy the Project URL and the anon key into
+--      NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY. Those two
+--      values are the only place the project is named -- no code changes.
+--      They are inlined at build time, so a rebuild is required, not a restart.
+--
+-- Running it on a database that already has an older version of this schema
+-- resets it: the RESET block below drops every object this file owns, and the
+-- rest of the file rebuilds them from scratch. You always end up with exactly
+-- the schema described here, whatever state you started from. A run that fails
+-- halfway can simply be run again.
+--
+-- THE RESET IS DESTRUCTIVE. It deletes every room, participant, payment and
+-- split. Signed-up accounts survive (auth.users is not touched), and their
+-- profiles are rebuilt by the backfill at the end of this file. If you ever need
+-- to run this against a database whose data you want to keep, comment out the
+-- RESET block first -- everything after it is safe on a live database.
 --
 -- Model
 -- -----
@@ -16,10 +40,37 @@
 
 create extension if not exists "pgcrypto";
 
--- Drop the previous single-ledger schema. Destructive; this app has no live data yet.
+-- RESET =======================================================================
+-- Drops everything this file owns, so the rebuild below starts from nothing.
+-- No-op on a brand new project. On an existing one it DELETES ALL APP DATA.
+-- Comment out this whole block to run the file without losing data.
+--
+-- Accounts are deliberately left alone: dropping auth.users would delete the
+-- logins too. To wipe those as well, add `delete from auth.users;` at the end of
+-- this block -- but note that cascades through profiles, rooms and payments.
+
+-- The trigger must go before the function it calls.
+drop trigger if exists on_auth_user_created on auth.users;
+
+-- Child tables first. `cascade` also removes the RLS policies on each table.
 drop table if exists public.payment_splits cascade;
 drop table if exists public.payments cascade;
+drop table if exists public.participants cascade;
+drop table if exists public.rooms cascade;
+drop table if exists public.profiles cascade;
+
+-- The original single-ledger schema, before rooms existed. Only present on very
+-- old databases; harmless everywhere else.
 drop table if exists public.users cascade;
+
+-- Argument types are part of a function's identity, so they cannot be omitted.
+drop function if exists public.handle_new_user() cascade;
+drop function if exists public.join_room(text) cascade;
+drop function if exists public.room_preview(text) cascade;
+drop function if exists public.is_room_member(uuid) cascade;
+drop function if exists public.is_room_owner(uuid) cascade;
+drop function if exists public.generate_invite_code() cascade;
+-- END RESET ===================================================================
 
 -- Profiles ------------------------------------------------------------------
 -- auth.users is not readable from the client, so mirror the bits we display.
@@ -268,6 +319,11 @@ end;
 $$;
 
 -- Row Level Security --------------------------------------------------------
+-- Postgres has no `create policy if not exists`, so every policy below is
+-- dropped first. Redundant after a RESET, which already took the policies down
+-- with their tables -- but it is what lets the file still run cleanly when the
+-- RESET block is commented out.
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.participants enable row level security;
@@ -276,8 +332,11 @@ alter table public.payment_splits enable row level security;
 
 -- profiles: yours only. Other people's names are read from `participants`, so
 -- there is never a reason to expose the profiles table across accounts.
+drop policy if exists "read own profile" on public.profiles;
 create policy "read own profile" on public.profiles
     for select to authenticated using (id = (select auth.uid()));
+
+drop policy if exists "update own profile" on public.profiles;
 create policy "update own profile" on public.profiles
     for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
@@ -285,32 +344,40 @@ create policy "update own profile" on public.profiles
 -- does not need a policy. But an account that signed up BEFORE that trigger
 -- existed has no profile row at all, and an UPDATE against a missing row silently
 -- changes nothing. The app upserts instead, which needs this.
+drop policy if exists "create own profile" on public.profiles;
 create policy "create own profile" on public.profiles
     for insert to authenticated with check (id = (select auth.uid()));
 
 -- rooms: visible to members and the owner. Only the owner may rename or delete.
+drop policy if exists "members read rooms" on public.rooms;
 create policy "members read rooms" on public.rooms
     for select to authenticated
     using (owner_id = (select auth.uid()) or public.is_room_member(id));
 
+drop policy if exists "create own rooms" on public.rooms;
 create policy "create own rooms" on public.rooms
     for insert to authenticated with check (owner_id = (select auth.uid()));
 
+drop policy if exists "owner updates room" on public.rooms;
 create policy "owner updates room" on public.rooms
     for update to authenticated
     using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 
+drop policy if exists "owner deletes room" on public.rooms;
 create policy "owner deletes room" on public.rooms
     for delete to authenticated using (owner_id = (select auth.uid()));
 
 -- participants: any member sees the roster. Only the owner edits it -- otherwise
 -- a member could add or rename people and shift what everyone owes.
+drop policy if exists "members read participants" on public.participants;
 create policy "members read participants" on public.participants
     for select to authenticated using (public.is_room_member(room_id));
 
+drop policy if exists "owner adds participants" on public.participants;
 create policy "owner adds participants" on public.participants
     for insert to authenticated with check (public.is_room_owner(room_id));
 
+drop policy if exists "owner updates participants" on public.participants;
 create policy "owner updates participants" on public.participants
     for update to authenticated
     using (public.is_room_owner(room_id)) with check (public.is_room_owner(room_id));
@@ -320,21 +387,25 @@ create policy "owner updates participants" on public.participants
 -- leaveRoom() nulls the account out but keeps the participant, so the payments
 -- you recorded stay in the room's history and everyone's balances still add up.
 -- Without the null case, a member could never leave.
+drop policy if exists "members update their own participant" on public.participants;
 create policy "members update their own participant" on public.participants
     for update to authenticated
     using (user_id = (select auth.uid()))
     with check (user_id = (select auth.uid()) or user_id is null);
 
 -- The owner can remove anyone; a member can remove themselves (leave the room).
+drop policy if exists "owner removes participants, members leave" on public.participants;
 create policy "owner removes participants, members leave" on public.participants
     for delete to authenticated
     using (public.is_room_owner(room_id) or user_id = (select auth.uid()));
 
 -- payments: any member of the room may read and record. Deleting is restricted to
 -- whoever recorded it, or the room owner.
+drop policy if exists "members read payments" on public.payments;
 create policy "members read payments" on public.payments
     for select to authenticated using (public.is_room_member(room_id));
 
+drop policy if exists "members add payments" on public.payments;
 create policy "members add payments" on public.payments
     for insert to authenticated
     with check (
@@ -348,11 +419,13 @@ create policy "members add payments" on public.payments
         )
     );
 
+drop policy if exists "creator or owner deletes payments" on public.payments;
 create policy "creator or owner deletes payments" on public.payments
     for delete to authenticated
     using (created_by = (select auth.uid()) or public.is_room_owner(room_id));
 
 -- payment_splits: ownership is inherited from the parent payment.
+drop policy if exists "members read splits" on public.payment_splits;
 create policy "members read splits" on public.payment_splits
     for select to authenticated
     using (
@@ -362,6 +435,7 @@ create policy "members read splits" on public.payment_splits
         )
     );
 
+drop policy if exists "creator adds splits" on public.payment_splits;
 create policy "creator adds splits" on public.payment_splits
     for insert to authenticated
     with check (
@@ -378,6 +452,7 @@ create policy "creator adds splits" on public.payment_splits
         )
     );
 
+drop policy if exists "creator or owner removes splits" on public.payment_splits;
 create policy "creator or owner removes splits" on public.payment_splits
     for delete to authenticated
     using (
@@ -387,3 +462,24 @@ create policy "creator or owner removes splits" on public.payment_splits
               and (p.created_by = (select auth.uid()) or public.is_room_owner(p.room_id))
         )
     );
+
+-- Profile backfill ----------------------------------------------------------
+-- A no-op on a brand new project, where no accounts exist yet. It matters in two
+-- cases: an account that signed up before the on_auth_user_created trigger
+-- existed, and a region move where auth.users was restored from a dump with the
+-- trigger disabled. Both leave accounts with no row in public.profiles, and the
+-- app then falls back to showing the local part of the email as a display name.
+--
+-- Uses the display name captured at signup where there is one, otherwise the
+-- email's local part as a placeholder the user can change in Account settings.
+insert into public.profiles (id, email, display_name)
+select
+    u.id,
+    u.email,
+    coalesce(
+        nullif(trim(u.raw_user_meta_data ->> 'display_name'), ''),
+        split_part(u.email, '@', 1)
+    )
+from auth.users u
+where u.email is not null
+on conflict (id) do nothing;

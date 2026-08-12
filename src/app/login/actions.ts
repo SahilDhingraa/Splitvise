@@ -2,9 +2,27 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 
 export type AuthResult = { error: string | null; message: string | null };
+
+// Where the confirmation email should send people back to. Taken from the
+// request rather than hardcoded, so the same code works on localhost, on the LAN
+// address used for phone testing, and in production.
+//
+// Server Actions are POSTs that Next already checks the Origin of, so the header
+// is always there in practice; the host fallback is belt and braces.
+async function requestOrigin(): Promise<string> {
+  const h = await headers();
+
+  const origin = h.get('origin');
+  if (origin) return origin;
+
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  return host ? `${proto}://${host}` : '';
+}
 
 // Only ever redirect to a path on this site. Without this check, a crafted
 // ?next=https://evil.example link would turn our own login form into an open
@@ -47,11 +65,23 @@ export async function signUp(_prev: AuthResult, formData: FormData): Promise<Aut
     return { error: 'Password must be at least 8 characters.', message: null };
   }
 
+  const origin = await requestOrigin();
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      // Without this, Supabase falls back to the project's Site URL on its own,
+      // and the confirmation link arrives as `/?code=...`. Nothing serves that
+      // path, so the proxy bounces the visitor to /login and the code is never
+      // exchanged -- confirming your email appears to do nothing. The route that
+      // actually redeems the code is /auth/callback, so say so explicitly.
+      //
+      // `next` rides along so an invite link clicked while signed out still ends
+      // up in the room after confirmation, rather than on the dashboard.
+      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+
       // Read by the handle_new_user trigger to seed the profile.
       data: { display_name: displayName || email.split('@')[0] },
     },

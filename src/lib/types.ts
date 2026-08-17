@@ -8,6 +8,9 @@ export type Room = {
   // People can still join it and still leave it. Only the owner may lock.
   lockedAt: string | null;
   isLocked: boolean;
+  // How many people are in the room. RLS scopes the count the same way it
+  // scopes the roster, so a member always sees the full number.
+  participantCount: number;
   createdAt: string;
 };
 

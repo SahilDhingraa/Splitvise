@@ -35,7 +35,9 @@ export async function getRooms(): Promise<Room[]> {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, name, invite_code, owner_id, locked_at, created_at')
+    // `participants(count)` is an aggregate on the join, so the roster itself
+    // never crosses the wire -- the list only needs the number.
+    .select('id, name, invite_code, owner_id, locked_at, created_at, participants(count)')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -48,6 +50,7 @@ export async function getRooms(): Promise<Room[]> {
     isOwner: row.owner_id === userId,
     lockedAt: row.locked_at,
     isLocked: row.locked_at !== null,
+    participantCount: countOf(row.participants),
     createdAt: row.created_at,
   }));
 }
@@ -61,7 +64,7 @@ export async function getRoom(roomId: string): Promise<Room | null> {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, name, invite_code, owner_id, locked_at, created_at')
+    .select('id, name, invite_code, owner_id, locked_at, created_at, participants(count)')
     .eq('id', roomId)
     .maybeSingle();
 
@@ -76,8 +79,15 @@ export async function getRoom(roomId: string): Promise<Room | null> {
     isOwner: data.owner_id === userId,
     lockedAt: data.locked_at,
     isLocked: data.locked_at !== null,
+    participantCount: countOf(data.participants),
     createdAt: data.created_at,
   };
+}
+
+// PostgREST returns an aggregate on an embedded table as `[{ count: n }]`, and
+// omits the row entirely when the count is zero.
+function countOf(embedded: { count: number }[] | null): number {
+  return embedded?.[0]?.count ?? 0;
 }
 
 export async function getParticipants(roomId: string): Promise<Participant[]> {

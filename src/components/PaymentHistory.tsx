@@ -29,7 +29,9 @@ export function PaymentHistory({ roomId, payments }: { roomId: string; payments:
                 <div className="payment-details">
                   💰 ${payment.amount.toFixed(2)} paid by {payment.payer}
                   <br />
-                  👥 Split among: {payment.splitAmong.join(', ')}
+                  👥 Split among {payment.splitAmong.length}{' '}
+                  {payment.splitAmong.length === 1 ? 'person' : 'people'}:{' '}
+                  {payment.splitAmong.join(', ')}
                   <br />
                   🕒 <LocalTime iso={payment.createdAt} />
                 </div>

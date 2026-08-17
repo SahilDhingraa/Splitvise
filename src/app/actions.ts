@@ -236,6 +236,31 @@ export async function renameParticipant(
   return ok;
 }
 
+// Two entries, one person: keep one, fold the other into it. The whole thing is
+// one SQL function so it cannot half-apply -- see merge_participants in the
+// schema for what moves where, and why it is not a series of client calls.
+export async function mergeParticipants(
+  roomId: string,
+  keepId: string,
+  absorbId: string,
+): Promise<ActionResult> {
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
+
+  const supabase = await createClient();
+
+  // The function raises its own messages -- "Only the room owner can merge
+  // people." and friends -- so pass them straight through.
+  const { error } = await supabase.rpc('merge_participants', {
+    keep: keepId,
+    absorb: absorbId,
+  });
+
+  if (error) return fail(error.message);
+
+  revalidatePath(`/rooms/${roomId}`);
+  return ok;
+}
+
 export async function removeParticipant(roomId: string, participantId: string): Promise<ActionResult> {
   if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
 
@@ -337,11 +362,19 @@ export async function updateDisplayName(
 
 // Payments ------------------------------------------------------------------
 
-export async function addPayment(
+// The payer, amount, description and split set, as the form gives them. Shared
+// by recording a payment and editing one, which take exactly the same fields.
+type PaymentInput = {
+  payerId: string;
+  amount: number;
+  description: string;
+  splitAmongIds: string[];
+};
+
+async function readPaymentForm(
   roomId: string,
-  _prev: ActionResult,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<PaymentInput | ActionResult> {
   const payerId = String(formData.get('payerId') ?? '');
   const amount = Number(formData.get('amount'));
   const description = String(formData.get('description') ?? '').trim();
@@ -351,12 +384,12 @@ export async function addPayment(
   if (!payerId) return fail('Select who paid.');
   if (!Number.isFinite(amount) || amount <= 0) return fail('Enter a valid amount.');
   if (!description) return fail('Enter a description.');
-  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
-
-  const supabase = await createClient();
 
   let splitAmongIds = selectedIds;
   if (splitType === 'all') {
+    // Resolved now rather than stored as "everyone", so the split is a fixed set
+    // of people that later roster changes do not silently rewrite.
+    const supabase = await createClient();
     const { data: participants, error } = await supabase
       .from('participants')
       .select('id')
@@ -367,6 +400,26 @@ export async function addPayment(
   }
 
   if (splitAmongIds.length === 0) return fail('Select at least one person to split among.');
+
+  return { payerId, amount, description, splitAmongIds };
+}
+
+function isFailure(result: PaymentInput | ActionResult): result is ActionResult {
+  return 'error' in result;
+}
+
+export async function addPayment(
+  roomId: string,
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
+
+  const input = await readPaymentForm(roomId, formData);
+  if (isFailure(input)) return input;
+
+  const { payerId, amount, description, splitAmongIds } = input;
+  const supabase = await createClient();
 
   const { data: payment, error: paymentError } = await supabase
     .from('payments')
@@ -387,6 +440,98 @@ export async function addPayment(
     // PostgREST has no multi-statement transactions, so undo the payment by hand.
     // A payment split among nobody would divide by zero when balances are computed.
     await supabase.from('payments').delete().eq('id', payment.id);
+    return fail(splitsError.message);
+  }
+
+  revalidatePath(`/rooms/${roomId}`);
+  return ok;
+}
+
+const NOT_YOURS_MESSAGE =
+  'Only the person who recorded this payment, or the room owner, can edit it.';
+
+export async function updatePayment(
+  roomId: string,
+  paymentId: string,
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
+
+  const input = await readPaymentForm(roomId, formData);
+  if (isFailure(input)) return input;
+
+  const { payerId, amount, description, splitAmongIds } = input;
+  const supabase = await createClient();
+
+  // An edit spans two tables and PostgREST has no transactions, so keep what the
+  // payment looked like before and put it back by hand if a later step fails.
+  // Half an applied edit is worse than none: a payment with no splits at all
+  // would divide by zero when balances are computed. The undo still leaves the
+  // payment marked as edited, since the database stamps every UPDATE -- erring
+  // toward saying too much rather than too little.
+  const { data: before, error: beforeError } = await supabase
+    .from('payments')
+    .select('payer_id, amount, description, payment_splits ( participant_id )')
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  if (beforeError) return fail(beforeError.message);
+  if (!before) return fail('That payment no longer exists.');
+
+  const previousSplitIds = (before.payment_splits ?? []).map((split) => split.participant_id);
+
+  // `.select()` because RLS does not make a rejected UPDATE an error -- the row
+  // is filtered out and PostgREST reports success with nothing changed. Asking
+  // for the row back is how we tell "done" from "not allowed".
+  const { data: updated, error: updateError } = await supabase
+    .from('payments')
+    .update({ payer_id: payerId, amount, description })
+    .eq('id', paymentId)
+    .select('id');
+
+  if (updateError) return fail(updateError.message);
+  if (!updated || updated.length === 0) return fail(NOT_YOURS_MESSAGE);
+
+  const restorePayment = async () => {
+    await supabase
+      .from('payments')
+      .update({
+        payer_id: before.payer_id,
+        amount: before.amount,
+        description: before.description,
+      })
+      .eq('id', paymentId);
+  };
+
+  // Replace the split set wholesale rather than diffing it: the table is a plain
+  // (payment, participant) join with no other columns, so there is nothing a
+  // diff would preserve.
+  const { error: clearError } = await supabase
+    .from('payment_splits')
+    .delete()
+    .eq('payment_id', paymentId);
+
+  if (clearError) {
+    await restorePayment();
+    return fail(clearError.message);
+  }
+
+  const { error: splitsError } = await supabase.from('payment_splits').insert(
+    splitAmongIds.map((participantId) => ({
+      payment_id: paymentId,
+      participant_id: participantId,
+    })),
+  );
+
+  if (splitsError) {
+    await supabase.from('payment_splits').insert(
+      previousSplitIds.map((participantId) => ({
+        payment_id: paymentId,
+        participant_id: participantId,
+      })),
+    );
+    await restorePayment();
     return fail(splitsError.message);
   }
 

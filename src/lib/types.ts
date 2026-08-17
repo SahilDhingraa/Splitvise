@@ -34,6 +34,10 @@ export type Payment = {
   splitAmong: string[];
   splitAmongIds: string[];
   createdAt: string;
+  // null until someone changes the payment. Stamped by the database, so it is
+  // there whether the edit came through the app or not.
+  editedAt: string | null;
+  canEdit: boolean;
   canDelete: boolean;
 };
 

@@ -49,7 +49,9 @@ export function ParticipantManager({
 
   return (
     <div className="section">
-      <h2>👥 People</h2>
+      <h2>
+        👥 People <span className="section-count">{participants.length}</span>
+      </h2>
 
       <ul className="user-list">
         {participants.map((participant) => (

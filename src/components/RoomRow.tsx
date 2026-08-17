@@ -82,14 +82,11 @@ export function RoomRow({ room }: { room: Room }) {
     <li className="user-item">
       <Link href={`/rooms/${room.id}`} className="room-link">
         <strong>{room.name}</strong>
+        {room.isLocked && <span className="room-badge locked-badge">🔒</span>}
         <span className="room-badge">{room.isOwner ? 'Owner' : 'Member'}</span>
         <span className="room-badge">
-          👥 {room.participantCount} {room.participantCount === 1 ? 'person' : 'people'}
+          👥 {room.participantCount}
         </span>
-        {/* Locking lives on the room page, next to the explanation of what it
-            does. Here it is only a label, so the list says why a room is
-            read-only before you open it. */}
-        {room.isLocked && <span className="room-badge locked-badge">🔒 Locked</span>}
       </Link>
 
       {/* Only the owner can rename or delete. This mirrors RLS; it decides what

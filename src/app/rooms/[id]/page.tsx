@@ -39,7 +39,12 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
     <div className="container">
       <ThemeToggle />
 
-      <RoomHeader room={room} inviteUrl={inviteUrl} />
+      <RoomHeader
+        room={room}
+        inviteUrl={inviteUrl}
+        participants={participants}
+        payments={payments}
+      />
 
       <div className="main-content">
         <ParticipantManager
@@ -51,7 +56,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         />
         <PaymentForm roomId={id} participants={participants} isLocked={room.isLocked} />
         <BalanceSummary participants={participants} payments={payments} />
-        <PaymentHistory roomId={id} payments={payments} />
+        <PaymentHistory roomId={id} payments={payments} participants={participants} />
       </div>
     </div>
   );

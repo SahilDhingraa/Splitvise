@@ -38,6 +38,12 @@
 -- payments point at participants and never at accounts directly -- the payment
 -- history survives a placeholder becoming a real user.
 --
+-- Claiming only works when the emails match. When they do not -- the same person
+-- added twice under two spellings, or a placeholder who joined by link before
+-- anyone noticed -- the room ends up with two entries for one human. The owner
+-- can MERGE them (merge_participants below): one entry is kept, the other's
+-- payments and splits move onto it, and the duplicate row is removed.
+--
 -- A room can also be LOCKED by its owner (rooms.locked_at). A locked room is a
 -- frozen ledger: nobody -- the owner included -- may record, delete or reshape a
 -- payment, or change the roster. Reading still works, invite links still work,
@@ -71,7 +77,9 @@ drop table if exists public.users cascade;
 
 -- Argument types are part of a function's identity, so they cannot be omitted.
 drop function if exists public.handle_new_user() cascade;
+drop function if exists public.stamp_payment_edit() cascade;
 drop function if exists public.join_room(text) cascade;
+drop function if exists public.merge_participants(uuid, uuid) cascade;
 drop function if exists public.room_preview(text) cascade;
 drop function if exists public.is_room_member(uuid) cascade;
 drop function if exists public.is_room_owner(uuid) cascade;
@@ -160,14 +168,42 @@ create table if not exists public.payments (
 
     amount      numeric(12, 2) not null check (amount > 0),
     description text not null check (length(trim(description)) > 0),
+
+    -- null => never edited. Set by the trigger below, never by the client, so
+    -- the "edited" mark cannot be left off by whoever did the editing.
+    edited_at   timestamptz,
+
     created_at  timestamptz not null default now()
 );
+
+-- For databases created before editing existed.
+alter table public.payments add column if not exists edited_at timestamptz;
 
 create table if not exists public.payment_splits (
     payment_id     uuid not null references public.payments (id) on delete cascade,
     participant_id uuid not null references public.participants (id) on delete cascade,
     primary key (payment_id, participant_id)
 );
+
+-- Stamp every edit. Unconditional, and it overwrites whatever the client sent,
+-- because the point of the mark is that an edit cannot be made quietly.
+--
+-- An edit that only reshapes the split still lands here: updatePayment() always
+-- writes the payments row, so a split-only change is stamped like any other.
+create or replace function public.stamp_payment_edit()
+returns trigger
+language plpgsql
+as $$
+begin
+    new.edited_at := now();
+    return new;
+end;
+$$;
+
+drop trigger if exists on_payment_updated on public.payments;
+create trigger on_payment_updated
+    before update on public.payments
+    for each row execute function public.stamp_payment_edit();
 
 create index if not exists rooms_owner_idx on public.rooms (owner_id);
 create index if not exists participants_room_idx on public.participants (room_id);
@@ -358,6 +394,90 @@ begin
 end;
 $$;
 
+-- Merging two entries for one person ----------------------------------------
+-- One function rather than a handful of client calls, for two reasons. It is a
+-- single transaction, so a merge cannot half-apply and leave the room's balances
+-- describing a person who is partly two people. And payment_splits has no UPDATE
+-- policy at all -- splits are only ever added and removed -- so moving them is
+-- not something a client can do, by design.
+--
+-- SECURITY DEFINER, so RLS does not apply inside: the checks below are the
+-- enforcement, and they are deliberately the same ones the policies would make.
+create or replace function public.merge_participants(keep uuid, absorb uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    keep_room    uuid;
+    keep_user    uuid;
+    keep_email   text;
+    absorb_room  uuid;
+    absorb_user  uuid;
+    absorb_email text;
+begin
+    if keep = absorb then
+        raise exception 'Pick two different people to merge.';
+    end if;
+
+    select room_id, user_id, email into keep_room, keep_user, keep_email
+    from participants where id = keep;
+
+    select room_id, user_id, email into absorb_room, absorb_user, absorb_email
+    from participants where id = absorb;
+
+    if keep_room is null or absorb_room is null then
+        raise exception 'That person is no longer in this room.';
+    end if;
+
+    -- Without this, a room owner could pull a participant out of someone else's
+    -- room, since the function does not answer to RLS.
+    if keep_room <> absorb_room then
+        raise exception 'Both people must be in the same room.';
+    end if;
+
+    if not public.is_room_owner(keep_room) then
+        raise exception 'Only the room owner can merge people.';
+    end if;
+
+    if public.is_room_locked(keep_room) then
+        raise exception 'This room is locked. Only its owner can unlock it.';
+    end if;
+
+    -- Payments the absorbed entry fronted were fronted by the kept one.
+    update payments set payer_id = keep where payer_id = absorb;
+
+    -- Where a payment was split among BOTH entries, the two shares were always
+    -- one person's. Drop the absorbed side rather than moving it: the payment is
+    -- now split one way fewer, which is what it should have been all along. The
+    -- primary key on (payment_id, participant_id) would reject the move anyway.
+    delete from payment_splits s
+    where s.participant_id = absorb
+      and exists (
+          select 1 from payment_splits kept
+          where kept.payment_id = s.payment_id and kept.participant_id = keep
+      );
+
+    update payment_splits set participant_id = keep where participant_id = absorb;
+
+    -- Nothing of theirs is left to cascade; the row is now just a duplicate name.
+    delete from participants where id = absorb;
+
+    -- The kept entry takes over the account and email only where it had none.
+    -- A merge should not lock somebody out of a room they had joined, and this
+    -- is the usual shape of the problem: a placeholder full of history on one
+    -- side, the account that should have claimed it on the other.
+    --
+    -- After the delete, not before: (room_id, user_id) is unique, so the account
+    -- cannot sit on two rows even for a moment.
+    update participants
+    set user_id = coalesce(keep_user, absorb_user),
+        email   = coalesce(keep_email, absorb_email)
+    where id = keep;
+end;
+$$;
+
 -- Row Level Security --------------------------------------------------------
 -- Postgres has no `create policy if not exists`, so every policy below is
 -- dropped first. Redundant after a RESET, which already took the policies down
@@ -481,6 +601,26 @@ create policy "members add payments" on public.payments
         )
     );
 
+-- Editing is allowed to exactly who may delete: whoever recorded the payment, or
+-- the room owner. USING decides which rows may be edited; WITH CHECK guards what
+-- they may become -- still this room's, still not locked, and still paid by
+-- someone who belongs to the room, so an edit cannot do what an insert cannot.
+drop policy if exists "creator or owner updates payments" on public.payments;
+create policy "creator or owner updates payments" on public.payments
+    for update to authenticated
+    using (
+        (created_by = (select auth.uid()) or public.is_room_owner(room_id))
+        and not public.is_room_locked(room_id)
+    )
+    with check (
+        public.is_room_member(room_id)
+        and not public.is_room_locked(room_id)
+        and exists (
+            select 1 from participants p
+            where p.id = payer_id and p.room_id = payments.room_id
+        )
+    );
+
 drop policy if exists "creator or owner deletes payments" on public.payments;
 create policy "creator or owner deletes payments" on public.payments
     for delete to authenticated
@@ -503,14 +643,20 @@ create policy "members read splits" on public.payment_splits
 -- The lock is repeated on the splits. Without it, a payment inserted a moment
 -- before the lock (or by a client racing it) could still have its splits rewritten
 -- afterwards, which changes the balances just as much as a new payment would.
+--
+-- The owner is here, not just the creator, because editing a payment replaces its
+-- splits: delete the old set, insert the new one. Deleting was already open to the
+-- owner, so an owner-only insert restriction would let them take a payment's
+-- splits away without being able to put any back.
 drop policy if exists "creator adds splits" on public.payment_splits;
-create policy "creator adds splits" on public.payment_splits
+drop policy if exists "creator or owner adds splits" on public.payment_splits;
+create policy "creator or owner adds splits" on public.payment_splits
     for insert to authenticated
     with check (
         exists (
             select 1 from payments p
             where p.id = payment_id
-              and p.created_by = (select auth.uid())
+              and (p.created_by = (select auth.uid()) or public.is_room_owner(p.room_id))
               and not public.is_room_locked(p.room_id)
         )
         -- ...and the person being split with must be in the same room as the payment.

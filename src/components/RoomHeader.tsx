@@ -4,12 +4,24 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useTransition } from 'react';
 import { deleteRoom, leaveRoom, renameRoom, setRoomLock } from '@/app/actions';
-import type { Room } from '@/lib/types';
+import { MergePeople } from './MergePeople';
+import type { Participant, Payment, Room } from '@/lib/types';
 
-export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string }) {
+export function RoomHeader({
+  room,
+  inviteUrl,
+  participants,
+  payments,
+}: {
+  room: Room;
+  inviteUrl: string;
+  participants: Participant[];
+  payments: Payment[];
+}) {
   const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
   const [draft, setDraft] = useState(room.name);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,6 +177,19 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
           </button>
         )}
 
+        {/* Owner-only and hidden while the room is locked, mirroring what
+            merge_participants will refuse. It needs two people to work with. */}
+        {room.isOwner && !room.isLocked && participants.length > 1 && (
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => setIsMerging((open) => !open)}
+            disabled={isPending}
+          >
+            👥 Merge people
+          </button>
+        )}
+
         {room.isOwner ? (
           <button type="button" className="remove-btn" onClick={handleDelete} disabled={isPending}>
             Delete room
@@ -175,6 +200,15 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
           </button>
         )}
       </div>
+
+      {isMerging && (
+        <MergePeople
+          roomId={room.id}
+          participants={participants}
+          payments={payments}
+          onDone={() => setIsMerging(false)}
+        />
+      )}
     </div>
   );
 }

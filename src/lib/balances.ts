@@ -2,6 +2,16 @@ import type { Balance, Participant, Payment, Settlement } from './types';
 
 // Balances are keyed by participant name, which is unique within a room.
 
+// A cent of slack, so floating point dust does not invent a 0.001 debt. Splitting
+// $10 three ways leaves someone off by a fraction of a cent no matter how it is
+// rounded; that is not a debt anyone can pay.
+const EPSILON = 0.01;
+
+// Square with the room -- nothing to pay, nothing to collect.
+export function isSettled(amount: number): boolean {
+  return Math.abs(amount) <= EPSILON;
+}
+
 export function calculateBalances(participants: Participant[], payments: Payment[]): Balance[] {
   const totals = new Map<string, number>();
   participants.forEach((participant) => totals.set(participant.name, 0));
@@ -24,9 +34,6 @@ export function calculateBalances(participants: Participant[], payments: Payment
 // always produce the theoretical minimum number of transfers (that problem is
 // NP-hard), but it is close and it always settles everyone.
 export function calculateSettlements(balances: Balance[]): Settlement[] {
-  // A cent of slack, so floating point dust does not invent a 0.001 debt.
-  const EPSILON = 0.01;
-
   const creditors = balances
     .filter((entry) => entry.amount > EPSILON)
     .map((entry) => ({ name: entry.participant, amount: entry.amount }))

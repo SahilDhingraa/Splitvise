@@ -3,6 +3,7 @@
 import { useActionState, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addPayment, type ActionResult } from '@/app/actions';
+import { PaymentFields } from './PaymentFields';
 import type { Participant } from '@/lib/types';
 
 const EMPTY: ActionResult = { error: null };
@@ -25,8 +26,11 @@ export function PaymentForm({
   participants: Participant[];
   isLocked: boolean;
 }) {
-  const [splitType, setSplitType] = useState<'all' | 'specific'>('all');
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Bumped on success to remount the fields. form.reset() clears the inputs but
+  // not the "specific people" toggle, which is React state inside PaymentFields.
+  const [resetKey, setResetKey] = useState(0);
 
   // Clear the form only once the insert succeeded, so a rejected payment is still
   // there to correct.
@@ -34,13 +38,10 @@ export function PaymentForm({
     const result = await addPayment(roomId, prev, formData);
     if (!result.error) {
       formRef.current?.reset();
-      setSplitType('all');
+      setResetKey((key) => key + 1);
     }
     return result;
   }, EMPTY);
-
-  // Default the payer to you, since that is the overwhelmingly common case.
-  const you = participants.find((participant) => participant.isYou);
 
   // No form at all while the room is locked, rather than a disabled one: there is
   // nothing here to come back to, and a filled-in form that cannot be submitted
@@ -61,87 +62,7 @@ export function PaymentForm({
       <h2>💳 Record Payment</h2>
 
       <form action={formAction} ref={formRef}>
-        <div className="form-group">
-          <label htmlFor="payerSelect">Who Paid:</label>
-          <select id="payerSelect" name="payerId" defaultValue={you?.id ?? ''} required>
-            <option value="" disabled>
-              Select payer
-            </option>
-            {participants.map((participant) => (
-              <option key={participant.id} value={participant.id}>
-                {participant.name}
-                {participant.isYou ? ' (you)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="paymentAmount">Amount:</label>
-          <input
-            id="paymentAmount"
-            name="amount"
-            type="number"
-            placeholder="0.00"
-            step="0.01"
-            min="0.01"
-            required
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="paymentDescription">Description:</label>
-          <input
-            id="paymentDescription"
-            name="description"
-            type="text"
-            placeholder="What was this payment for?"
-            required
-          />
-        </div>
-
-        <div className="form-group">
-          <label>Split Among:</label>
-
-          <div className="radio-row">
-            <input
-              type="radio"
-              id="splitAll"
-              name="splitType"
-              value="all"
-              checked={splitType === 'all'}
-              onChange={() => setSplitType('all')}
-            />
-            <label htmlFor="splitAll" className="inline-label">
-              Everyone in the room
-            </label>
-          </div>
-
-          <div className="radio-row">
-            <input
-              type="radio"
-              id="splitSpecific"
-              name="splitType"
-              value="specific"
-              checked={splitType === 'specific'}
-              onChange={() => setSplitType('specific')}
-            />
-            <label htmlFor="splitSpecific" className="inline-label">
-              Specific people
-            </label>
-          </div>
-
-          {splitType === 'specific' && (
-            <div className="checkbox-group">
-              {participants.map((participant) => (
-                <label key={participant.id} className="checkbox-item">
-                  <input type="checkbox" name="splitAmong" value={participant.id} />
-                  <span>{participant.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        <PaymentFields key={resetKey} idPrefix="new-payment" participants={participants} />
 
         {state.error && <p className="form-error">{state.error}</p>}
         <SubmitButton />

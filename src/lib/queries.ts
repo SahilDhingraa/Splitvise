@@ -123,6 +123,7 @@ export async function getPayments(room: Room): Promise<Payment[]> {
         amount,
         description,
         created_at,
+        edited_at,
         created_by,
         payer:payer_id ( id, name ),
         payment_splits ( participant:participant_id ( id, name ) )
@@ -138,6 +139,7 @@ export async function getPayments(room: Room): Promise<Payment[]> {
     amount: string | number;
     description: string;
     created_at: string;
+    edited_at: string | null;
     created_by: string;
     payer: { id: string; name: string };
     payment_splits: { participant: { id: string; name: string } }[];
@@ -145,21 +147,28 @@ export async function getPayments(room: Room): Promise<Payment[]> {
 
   // PostgREST's inferred types do not narrow embedded joins to single objects,
   // so assert the shape and map it into our own Payment type.
-  return (data as unknown as Row[]).map((row) => ({
-    id: row.id,
-    payerId: row.payer.id,
-    payer: row.payer.name,
-    createdBy: row.created_by,
-    // numeric(12,2) arrives as a string; parse before any arithmetic.
-    amount: Number(row.amount),
-    description: row.description,
-    splitAmong: row.payment_splits.map((split) => split.participant.name),
-    splitAmongIds: row.payment_splits.map((split) => split.participant.id),
-    createdAt: row.created_at,
-    // Mirrors the delete policy, lock included. This only hides the button; the
-    // database is still the thing that enforces it.
-    canDelete: !room.isLocked && (row.created_by === userId || room.isOwner),
-  }));
+  return (data as unknown as Row[]).map((row) => {
+    // Editing and deleting answer to the same policy, so they are the same
+    // question here. This only hides buttons; the database is still the thing
+    // that enforces it.
+    const mine = !room.isLocked && (row.created_by === userId || room.isOwner);
+
+    return {
+      id: row.id,
+      payerId: row.payer.id,
+      payer: row.payer.name,
+      createdBy: row.created_by,
+      // numeric(12,2) arrives as a string; parse before any arithmetic.
+      amount: Number(row.amount),
+      description: row.description,
+      splitAmong: row.payment_splits.map((split) => split.participant.name),
+      splitAmongIds: row.payment_splits.map((split) => split.participant.id),
+      createdAt: row.created_at,
+      editedAt: row.edited_at,
+      canEdit: mine,
+      canDelete: mine,
+    };
+  });
 }
 
 export async function getRoomPreview(code: string): Promise<string | null> {

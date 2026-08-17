@@ -193,6 +193,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-decoration: underline;
 }
 
 .room-link:hover strong {
@@ -236,6 +237,50 @@ body {
     border: 1px solid #f59e0b80;
     background-color: #f59e0b1a;
     color: hsl(var(--foreground));
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+/* Merging two entries for one person. Lives under the room's own controls, so it
+   sits on the header's centred column but reads left-aligned like a form. */
+.merge-panel {
+    max-width: 520px;
+    margin: 1.25rem auto 0;
+    padding: 1.25rem;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    text-align: left;
+}
+
+.merge-panel h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.merge-panel .row-actions {
+    margin-top: 1.25rem;
+}
+
+/* The review step: who survives, what moves, what it costs. */
+.merge-summary {
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius);
+    background-color: hsl(var(--muted));
+    font-size: 0.875rem;
+}
+
+.merge-summary p + p {
+    margin-top: 0.5rem;
+}
+
+.merge-warning {
+    margin-top: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius);
+    border: 1px solid #f59e0b80;
+    background-color: #f59e0b1a;
     font-size: 0.8125rem;
     line-height: 1.5;
 }
@@ -330,8 +375,23 @@ body {
 }
 
 /* Inline rename */
-.user-item.editing {
+.user-item.editing,
+.payment-item.editing {
     display: block;
+}
+
+/* Editing a payment in place. The row is a side-by-side flex normally; while it
+   holds the whole payment form it becomes an ordinary block, set off from the
+   entries around it so it is clear which one is being changed. */
+.payment-edit-form {
+    padding: 0.25rem 0.75rem 0.75rem;
+    border-radius: var(--radius);
+    background-color: hsl(var(--muted));
+}
+
+.payment-edit-form .row-actions {
+    justify-content: flex-end;
+    margin-top: 1rem;
 }
 
 .rename-row {
@@ -447,6 +507,19 @@ body {
     gap: 0.5rem;
     border-bottom: none;
     padding-bottom: 0;
+}
+
+/* A count beside a section heading. Sized off the body text, not the heading,
+   so it reads as a tally rather than part of the title. */
+.section-count {
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--muted-foreground));
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
 }
 
 /* Form Elements */
@@ -690,6 +763,16 @@ input[type="checkbox"] {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* These headings are already small and uppercase, so the shared pill size would
+   out-weigh the label it counts. */
+.balance-card h3 .section-count {
+    font-size: 0.6875rem;
+    letter-spacing: 0;
 }
 
 .debt-item {

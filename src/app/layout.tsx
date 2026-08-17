@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
 import { Inter } from 'next/font/google';
 import { ServiceWorker } from '@/components/ServiceWorker';
 import './globals.css';
@@ -41,9 +40,10 @@ export const viewport: Viewport = {
 // Applies the saved theme before the page paints, so reloading in dark mode does
 // not flash white first.
 //
-// This has to be `next/script` with `beforeInteractive`, not a plain <script>
-// element: React does not execute script tags it renders itself, so a bare
-// <script> here would silently never run on the client.
+// Inlined into <head> by hand rather than via next/script. The caveat about React
+// not executing script tags applies to scripts React creates on the client; this
+// one is part of the server-rendered HTML, so the browser runs it on parse --
+// which is also the only moment early enough to beat the first paint.
 const themeScript = `
   try {
     const saved = localStorage.getItem('theme');
@@ -59,11 +59,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
         <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeScript}
-        </Script>
         <ServiceWorker />
         {children}
       </body>

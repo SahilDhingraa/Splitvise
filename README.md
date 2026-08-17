@@ -24,9 +24,16 @@ Who can do what:
 | Add / remove people | ✅ | ❌ |
 | Delete a payment | any, in their room | only ones they recorded |
 | Delete the room | ✅ | ❌ (can leave) |
+| Lock / unlock the room | ✅ | ❌ |
 
 Leaving a room detaches your account but leaves the participant behind as a placeholder, so the
 payments you recorded stay in the history and everyone's balances still add up.
+
+**Locking** freezes a room once the trip is settled. No payments can be recorded, deleted or
+re-split, and nobody can be added, renamed or removed — for everyone, the owner included, until the
+owner unlocks it. Reading still works, invite links still work: people can join a locked room and
+leave it, they just arrive to a read-only ledger. It is enforced by RLS (`is_room_locked()`), not by
+hiding buttons.
 
 ## Architecture
 

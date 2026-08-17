@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useTransition } from 'react';
-import { deleteRoom, leaveRoom, renameRoom } from '@/app/actions';
+import { deleteRoom, leaveRoom, renameRoom, setRoomLock } from '@/app/actions';
 import type { Room } from '@/lib/types';
 
 export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string }) {
@@ -62,6 +62,20 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
     });
   }
 
+  function handleLock() {
+    const question = room.isLocked
+      ? `Unlock "${room.name}"? Everyone will be able to record and remove payments again.`
+      : `Lock "${room.name}"? Nobody — including you — can record or remove payments, or change who is in the room, until you unlock it. People can still open the room and read it.`;
+
+    if (!window.confirm(question)) return;
+
+    setError(null);
+    startTransition(async () => {
+      const result = await setRoomLock(room.id, !room.isLocked);
+      if (result.error) setError(result.error);
+    });
+  }
+
   function handleLeave() {
     if (!window.confirm(`Leave "${room.name}"? Payments you recorded stay in the room.`)) return;
 
@@ -100,6 +114,7 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
       ) : (
         <h1 className="room-title">
           {room.name}
+          {room.isLocked && <span className="room-badge locked-badge">🔒 Locked</span>}
           {room.isOwner && (
             <button
               type="button"
@@ -117,6 +132,14 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
 
       <p>{room.isOwner ? 'You own this room' : 'You are a member of this room'}</p>
 
+      {room.isLocked && (
+        <p className="locked-banner">
+          🔒 This room is locked{room.lockedAt && <> since <LocalTime iso={room.lockedAt} /></>}.
+          Payments and people cannot be added, changed or removed
+          {room.isOwner ? ' until you unlock it.' : '. Only the room owner can unlock it.'}
+        </p>
+      )}
+
       <div className="invite-bar">
         <code className="invite-link">{inviteUrl}</code>
         <button type="button" className="secondary-btn" onClick={copyInvite}>
@@ -129,6 +152,19 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
       </p>
 
       <div className="account-bar">
+        {/* Owner-only, mirroring the "owner updates room" policy. A member never
+            sees the button; the database is what actually refuses them. */}
+        {room.isOwner && (
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={handleLock}
+            disabled={isPending}
+          >
+            {room.isLocked ? '🔓 Unlock room' : '🔒 Lock room'}
+          </button>
+        )}
+
         {room.isOwner ? (
           <button type="button" className="remove-btn" onClick={handleDelete} disabled={isPending}>
             Delete room
@@ -141,4 +177,10 @@ export function RoomHeader({ room, inviteUrl }: { room: Room; inviteUrl: string 
       </div>
     </div>
   );
+}
+
+// Client-side, so the timestamp is in the viewer's timezone. See the same helper
+// in PaymentHistory for why the hydration warning is suppressed.
+function LocalTime({ iso }: { iso: string }) {
+  return <span suppressHydrationWarning>{new Date(iso).toLocaleString()}</span>;
 }

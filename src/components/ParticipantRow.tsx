@@ -9,18 +9,22 @@ export function ParticipantRow({
   participant,
   involvedPayments,
   isOwner,
+  isLocked,
 }: {
   roomId: string;
   participant: Participant;
   involvedPayments: number;
   isOwner: boolean;
+  isLocked: boolean;
 }) {
   // Mirrors the RLS policies: the owner may rename anyone, and anyone may rename
   // themselves. Removal stays owner-only -- it cascade-deletes that person's
   // payments, which is a very different act from leaving a room, and a member
   // reaching for "Remove" on themselves almost certainly means "Leave".
-  const canRename = isOwner || participant.isYou;
-  const canRemove = isOwner;
+  //
+  // A locked room takes both away from everyone, the owner included.
+  const canRename = !isLocked && (isOwner || participant.isYou);
+  const canRemove = !isLocked && isOwner;
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(participant.name);
   const [error, setError] = useState<string | null>(null);

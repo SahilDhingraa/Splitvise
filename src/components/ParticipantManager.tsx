@@ -22,11 +22,13 @@ export function ParticipantManager({
   participants,
   payments,
   isOwner,
+  isLocked,
 }: {
   roomId: string;
   participants: Participant[];
   payments: Payment[];
   isOwner: boolean;
+  isLocked: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -57,11 +59,16 @@ export function ParticipantManager({
             participant={participant}
             involvedPayments={involvedPayments(participant.id)}
             isOwner={isOwner}
+            isLocked={isLocked}
           />
         ))}
       </ul>
 
-      {isOwner ? (
+      {isLocked ? (
+        <p className="form-hint left">
+          🔒 This room is locked. The list of people is frozen until the room owner unlocks it.
+        </p>
+      ) : isOwner ? (
         <form action={formAction} ref={formRef} className="add-person-form">
           <div className="form-group">
             <label htmlFor="participantName">Add someone without an account</label>

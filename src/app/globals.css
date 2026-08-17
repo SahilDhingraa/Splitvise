@@ -216,6 +216,30 @@ body {
     color: hsl(var(--muted-foreground));
 }
 
+/* Locked rooms. Amber rather than destructive red: a lock is a deliberate,
+   reversible state, not an error. */
+.locked-badge {
+    border-color: #f59e0b80;
+    background-color: #f59e0b1a;
+    color: #b45309;
+}
+
+.dark .locked-badge {
+    color: #fbbf24;
+}
+
+.locked-banner {
+    max-width: 520px;
+    margin: 1rem auto 0;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    border: 1px solid #f59e0b80;
+    background-color: #f59e0b1a;
+    color: hsl(var(--foreground));
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
 .back-link {
     display: inline-flex;
     align-items: center;

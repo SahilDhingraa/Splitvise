@@ -4,6 +4,10 @@ export type Room = {
   inviteCode: string;
   ownerId: string;
   isOwner: boolean;
+  // A locked room is read-only: no payments, no roster changes, for anyone.
+  // People can still join it and still leave it. Only the owner may lock.
+  lockedAt: string | null;
+  isLocked: boolean;
   createdAt: string;
 };
 

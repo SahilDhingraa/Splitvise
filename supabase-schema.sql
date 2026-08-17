@@ -37,6 +37,12 @@
 -- every payment already recorded against that name becomes theirs. This is why
 -- payments point at participants and never at accounts directly -- the payment
 -- history survives a placeholder becoming a real user.
+--
+-- A room can also be LOCKED by its owner (rooms.locked_at). A locked room is a
+-- frozen ledger: nobody -- the owner included -- may record, delete or reshape a
+-- payment, or change the roster. Reading still works, invite links still work,
+-- and people can still join and leave; they simply arrive to a read-only room.
+-- Only the owner can lock or unlock.
 
 create extension if not exists "pgcrypto";
 
@@ -69,6 +75,7 @@ drop function if exists public.join_room(text) cascade;
 drop function if exists public.room_preview(text) cascade;
 drop function if exists public.is_room_member(uuid) cascade;
 drop function if exists public.is_room_owner(uuid) cascade;
+drop function if exists public.is_room_locked(uuid) cascade;
 drop function if exists public.generate_invite_code() cascade;
 -- END RESET ===================================================================
 
@@ -100,8 +107,17 @@ create table if not exists public.rooms (
     owner_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
     name        text not null check (length(trim(name)) > 0),
     invite_code text not null unique default public.generate_invite_code(),
+
+    -- null => open. Set => the room is frozen; see the note at the top of the
+    -- file. A timestamp rather than a boolean, so the UI can say when it happened.
+    locked_at   timestamptz,
+
     created_at  timestamptz not null default now()
 );
+
+-- For databases created before the lock existed. `create table if not exists`
+-- above leaves an existing table untouched, so the column has to be added here.
+alter table public.rooms add column if not exists locked_at timestamptz;
 
 -- Participants --------------------------------------------------------------
 create table if not exists public.participants (
@@ -197,6 +213,24 @@ as $$
     );
 $$;
 
+-- Is this room frozen? Used by the write policies on participants, payments and
+-- payment_splits. SECURITY DEFINER for the same reason as the helpers above: a
+-- policy on `payments` that reads `rooms` would otherwise need the caller to
+-- pass the rooms SELECT policy too, and a member who somehow cannot see the room
+-- would get "not locked" rather than an error -- failing open.
+create or replace function public.is_room_locked(room uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+    select exists (
+        select 1 from rooms
+        where id = room and locked_at is not null
+    );
+$$;
+
 -- Signup: create the profile, and claim any placeholders left for this email ---
 create or replace function public.handle_new_user()
 returns trigger
@@ -289,6 +323,12 @@ begin
     select email, display_name into caller_email, caller_name
     from profiles where id = caller;
 
+    -- Note that a locked room is still joinable. Being SECURITY DEFINER, neither
+    -- the claim below nor the insert after it goes through the participants
+    -- policies, so the lock does not reach them -- which is the behaviour we
+    -- want: an invite link keeps working, and whoever follows it simply lands in
+    -- a room they can read but not change.
+    --
     -- Prefer claiming the placeholder someone already created for this email,
     -- so the payments recorded against that name follow the account.
     update participants
@@ -369,38 +409,59 @@ create policy "owner deletes room" on public.rooms
 
 -- participants: any member sees the roster. Only the owner edits it -- otherwise
 -- a member could add or rename people and shift what everyone owes.
+--
+-- Locking freezes the roster for the owner too. Adding or removing a person
+-- changes what everyone owes just as surely as a payment does, so a lock that
+-- left the roster editable would not really be a frozen ledger.
 drop policy if exists "members read participants" on public.participants;
 create policy "members read participants" on public.participants
     for select to authenticated using (public.is_room_member(room_id));
 
 drop policy if exists "owner adds participants" on public.participants;
 create policy "owner adds participants" on public.participants
-    for insert to authenticated with check (public.is_room_owner(room_id));
+    for insert to authenticated
+    with check (public.is_room_owner(room_id) and not public.is_room_locked(room_id));
 
 drop policy if exists "owner updates participants" on public.participants;
 create policy "owner updates participants" on public.participants
     for update to authenticated
-    using (public.is_room_owner(room_id)) with check (public.is_room_owner(room_id));
+    using (public.is_room_owner(room_id) and not public.is_room_locked(room_id))
+    with check (public.is_room_owner(room_id) and not public.is_room_locked(room_id));
 
 -- You may edit your own row: rename yourself, or detach your account to leave the
 -- room. The WITH CHECK permits `user_id = null` precisely so leaving works --
 -- leaveRoom() nulls the account out but keeps the participant, so the payments
 -- you recorded stay in the room's history and everyone's balances still add up.
 -- Without the null case, a member could never leave.
+--
+-- Leaving stays possible in a locked room: it removes nobody from the ledger and
+-- changes no balance, and locking a room should not trap people in it. Renaming
+-- yourself is a ledger edit, so it is frozen with everything else.
 drop policy if exists "members update their own participant" on public.participants;
 create policy "members update their own participant" on public.participants
     for update to authenticated
     using (user_id = (select auth.uid()))
-    with check (user_id = (select auth.uid()) or user_id is null);
+    with check (
+        user_id is null
+        or (user_id = (select auth.uid()) and not public.is_room_locked(room_id))
+    );
 
 -- The owner can remove anyone; a member can remove themselves (leave the room).
+-- Both delete the participant outright, taking their payments with them, so both
+-- are frozen while the room is locked -- a member who wants out of a locked room
+-- uses "Leave", which keeps the row and the history.
 drop policy if exists "owner removes participants, members leave" on public.participants;
 create policy "owner removes participants, members leave" on public.participants
     for delete to authenticated
-    using (public.is_room_owner(room_id) or user_id = (select auth.uid()));
+    using (
+        (public.is_room_owner(room_id) or user_id = (select auth.uid()))
+        and not public.is_room_locked(room_id)
+    );
 
 -- payments: any member of the room may read and record. Deleting is restricted to
--- whoever recorded it, or the room owner.
+-- whoever recorded it, or the room owner. A locked room permits neither, for
+-- anyone -- this is the point of the lock, and the reason it is enforced here
+-- rather than only in the UI.
 drop policy if exists "members read payments" on public.payments;
 create policy "members read payments" on public.payments
     for select to authenticated using (public.is_room_member(room_id));
@@ -410,6 +471,7 @@ create policy "members add payments" on public.payments
     for insert to authenticated
     with check (
         public.is_room_member(room_id)
+        and not public.is_room_locked(room_id)
         and created_by = (select auth.uid())
         -- The payer must belong to THIS room. Without this, a member could name a
         -- participant from an unrelated room as the payer.
@@ -422,7 +484,10 @@ create policy "members add payments" on public.payments
 drop policy if exists "creator or owner deletes payments" on public.payments;
 create policy "creator or owner deletes payments" on public.payments
     for delete to authenticated
-    using (created_by = (select auth.uid()) or public.is_room_owner(room_id));
+    using (
+        (created_by = (select auth.uid()) or public.is_room_owner(room_id))
+        and not public.is_room_locked(room_id)
+    );
 
 -- payment_splits: ownership is inherited from the parent payment.
 drop policy if exists "members read splits" on public.payment_splits;
@@ -435,13 +500,18 @@ create policy "members read splits" on public.payment_splits
         )
     );
 
+-- The lock is repeated on the splits. Without it, a payment inserted a moment
+-- before the lock (or by a client racing it) could still have its splits rewritten
+-- afterwards, which changes the balances just as much as a new payment would.
 drop policy if exists "creator adds splits" on public.payment_splits;
 create policy "creator adds splits" on public.payment_splits
     for insert to authenticated
     with check (
         exists (
             select 1 from payments p
-            where p.id = payment_id and p.created_by = (select auth.uid())
+            where p.id = payment_id
+              and p.created_by = (select auth.uid())
+              and not public.is_room_locked(p.room_id)
         )
         -- ...and the person being split with must be in the same room as the payment.
         and exists (
@@ -460,6 +530,7 @@ create policy "creator or owner removes splits" on public.payment_splits
             select 1 from payments p
             where p.id = payment_id
               and (p.created_by = (select auth.uid()) or public.is_room_owner(p.room_id))
+              and not public.is_room_locked(p.room_id)
         )
     );
 

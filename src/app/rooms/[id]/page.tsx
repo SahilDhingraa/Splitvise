@@ -17,10 +17,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   // nothing either way, so there is no way to probe for a room you cannot see.
   if (!room) notFound();
 
-  const [participants, payments] = await Promise.all([
-    getParticipants(id),
-    getPayments(id, room.isOwner),
-  ]);
+  const [participants, payments] = await Promise.all([getParticipants(id), getPayments(room)]);
 
   // Build the invite URL from the actual request host, so it is correct in dev,
   // on a preview deploy, and in production without any configuration.
@@ -50,8 +47,9 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
           participants={participants}
           payments={payments}
           isOwner={room.isOwner}
+          isLocked={room.isLocked}
         />
-        <PaymentForm roomId={id} participants={participants} />
+        <PaymentForm roomId={id} participants={participants} isLocked={room.isLocked} />
         <BalanceSummary participants={participants} payments={payments} />
         <PaymentHistory roomId={id} payments={payments} />
       </div>

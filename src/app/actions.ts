@@ -16,6 +16,25 @@ const fail = (error: string): ActionResult => ({ error });
 // Postgres error codes we translate into something a human can act on.
 const UNIQUE_VIOLATION = '23505';
 
+const LOCKED_MESSAGE = 'This room is locked. Only its owner can unlock it.';
+
+// A write blocked by RLS is not an error to PostgREST -- an UPDATE or DELETE that
+// matches no permitted row just reports zero rows changed, and an INSERT fails
+// with a policy violation whose message names the policy, not the reason. So the
+// mutations below ask first, purely to say "the room is locked" instead of
+// nothing at all or something cryptic. The policies remain the enforcement.
+async function isRoomLocked(roomId: string): Promise<boolean> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('rooms')
+    .select('locked_at')
+    .eq('id', roomId)
+    .maybeSingle();
+
+  return data?.locked_at != null;
+}
+
 // Rooms ---------------------------------------------------------------------
 
 export async function createRoom(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -71,6 +90,31 @@ export async function renameRoom(roomId: string, rawName: string): Promise<Actio
   // handle -- two of your rooms may both be called "Goa".
   const { error } = await supabase.from('rooms').update({ name }).eq('id', roomId);
   if (error) return fail(error.message);
+
+  revalidatePath('/');
+  revalidatePath(`/rooms/${roomId}`);
+  return ok;
+}
+
+export async function setRoomLock(roomId: string, locked: boolean): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  // Owner-only, per the "owner updates room" policy -- which deliberately carries
+  // no lock check of its own, or the owner could lock a room and never unlock it.
+  //
+  // `.select()` because a non-owner's UPDATE is not an error: RLS filters the row
+  // out and PostgREST reports success with nothing changed. Asking for the row
+  // back is how we tell "done" from "not allowed".
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({ locked_at: locked ? new Date().toISOString() : null })
+    .eq('id', roomId)
+    .select('id');
+
+  if (error) return fail(error.message);
+  if (!data || data.length === 0) {
+    return fail(`Only the room's owner can ${locked ? 'lock' : 'unlock'} it.`);
+  }
 
   revalidatePath('/');
   revalidatePath(`/rooms/${roomId}`);
@@ -143,6 +187,7 @@ export async function addParticipant(
   const email = String(formData.get('email') ?? '').trim();
 
   if (!name) return fail('Enter a name.');
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
 
   const supabase = await createClient();
 
@@ -170,6 +215,7 @@ export async function renameParticipant(
 ): Promise<ActionResult> {
   const name = rawName.trim();
   if (!name) return fail('Enter a name.');
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
 
   const supabase = await createClient();
 
@@ -191,6 +237,8 @@ export async function renameParticipant(
 }
 
 export async function removeParticipant(roomId: string, participantId: string): Promise<ActionResult> {
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
+
   const supabase = await createClient();
 
   const { error } = await supabase.from('participants').delete().eq('id', participantId);
@@ -231,25 +279,36 @@ export async function updateDisplayName(
   // whole rename failing.
   const { data: mine } = await supabase
     .from('participants')
-    .select('id, room_id')
+    .select('id, room_id, rooms ( name, locked_at )')
     .eq('user_id', user!.id);
 
-  const conflicts: string[] = [];
+  type Membership = {
+    id: string;
+    room_id: string;
+    rooms: { name: string; locked_at: string | null } | null;
+  };
 
-  for (const participant of mine ?? []) {
+  const conflicts: string[] = [];
+  const locked: string[] = [];
+
+  for (const participant of (mine ?? []) as unknown as Membership[]) {
+    const roomName = participant.rooms?.name ?? 'a room';
+
+    // A locked room keeps the name it was frozen with. Skipping it here is only
+    // so we can say so -- the policy would reject the update either way, and
+    // silently, since an UPDATE that matches no permitted row is not an error.
+    if (participant.rooms?.locked_at != null) {
+      locked.push(roomName);
+      continue;
+    }
+
     const { error: renameError } = await supabase
       .from('participants')
       .update({ name })
       .eq('id', participant.id);
 
     if (renameError?.code === UNIQUE_VIOLATION) {
-      const { data: room } = await supabase
-        .from('rooms')
-        .select('name')
-        .eq('id', participant.room_id)
-        .maybeSingle();
-
-      conflicts.push(room?.name ?? 'a room');
+      conflicts.push(roomName);
     } else if (renameError) {
       return fail(renameError.message);
     }
@@ -259,9 +318,17 @@ export async function updateDisplayName(
 
   revalidatePath('/', 'layout');
 
+  // Both are partial successes: the profile did save, so say what did not follow
+  // it rather than pretending the whole thing failed.
   if (conflicts.length > 0) {
     return fail(
       `Saved, but "${name}" is already taken in ${conflicts.join(', ')} — you keep your old name there.`,
+    );
+  }
+
+  if (locked.length > 0) {
+    return fail(
+      `Saved, but ${locked.join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked — you keep your old name there.`,
     );
   }
 
@@ -284,6 +351,7 @@ export async function addPayment(
   if (!payerId) return fail('Select who paid.');
   if (!Number.isFinite(amount) || amount <= 0) return fail('Enter a valid amount.');
   if (!description) return fail('Enter a description.');
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
 
   const supabase = await createClient();
 
@@ -327,6 +395,8 @@ export async function addPayment(
 }
 
 export async function removePayment(roomId: string, paymentId: string): Promise<ActionResult> {
+  if (await isRoomLocked(roomId)) return fail(LOCKED_MESSAGE);
+
   const supabase = await createClient();
 
   // RLS allows this only for the payment's creator or the room's owner.

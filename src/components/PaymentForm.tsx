@@ -19,9 +19,11 @@ function SubmitButton() {
 export function PaymentForm({
   roomId,
   participants,
+  isLocked,
 }: {
   roomId: string;
   participants: Participant[];
+  isLocked: boolean;
 }) {
   const [splitType, setSplitType] = useState<'all' | 'specific'>('all');
   const formRef = useRef<HTMLFormElement>(null);
@@ -39,6 +41,20 @@ export function PaymentForm({
 
   // Default the payer to you, since that is the overwhelmingly common case.
   const you = participants.find((participant) => participant.isYou);
+
+  // No form at all while the room is locked, rather than a disabled one: there is
+  // nothing here to come back to, and a filled-in form that cannot be submitted
+  // reads as a bug.
+  if (isLocked) {
+    return (
+      <div className="section">
+        <h2>💳 Record Payment</h2>
+        <p className="empty-state">
+          🔒 This room is locked. No new payments can be recorded until the room owner unlocks it.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="section">

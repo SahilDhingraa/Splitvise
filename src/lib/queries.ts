@@ -35,7 +35,7 @@ export async function getRooms(): Promise<Room[]> {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, name, invite_code, owner_id, created_at')
+    .select('id, name, invite_code, owner_id, locked_at, created_at')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -46,6 +46,8 @@ export async function getRooms(): Promise<Room[]> {
     inviteCode: row.invite_code,
     ownerId: row.owner_id,
     isOwner: row.owner_id === userId,
+    lockedAt: row.locked_at,
+    isLocked: row.locked_at !== null,
     createdAt: row.created_at,
   }));
 }
@@ -59,7 +61,7 @@ export async function getRoom(roomId: string): Promise<Room | null> {
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('id, name, invite_code, owner_id, created_at')
+    .select('id, name, invite_code, owner_id, locked_at, created_at')
     .eq('id', roomId)
     .maybeSingle();
 
@@ -72,6 +74,8 @@ export async function getRoom(roomId: string): Promise<Room | null> {
     inviteCode: data.invite_code,
     ownerId: data.owner_id,
     isOwner: data.owner_id === userId,
+    lockedAt: data.locked_at,
+    isLocked: data.locked_at !== null,
     createdAt: data.created_at,
   };
 }
@@ -97,7 +101,7 @@ export async function getParticipants(roomId: string): Promise<Participant[]> {
   }));
 }
 
-export async function getPayments(roomId: string, isOwner: boolean): Promise<Payment[]> {
+export async function getPayments(room: Room): Promise<Payment[]> {
   const supabase = await createClient();
   const userId = await getCurrentUserId();
 
@@ -114,7 +118,7 @@ export async function getPayments(roomId: string, isOwner: boolean): Promise<Pay
         payment_splits ( participant:participant_id ( id, name ) )
       `,
     )
-    .eq('room_id', roomId)
+    .eq('room_id', room.id)
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -142,9 +146,9 @@ export async function getPayments(roomId: string, isOwner: boolean): Promise<Pay
     splitAmong: row.payment_splits.map((split) => split.participant.name),
     splitAmongIds: row.payment_splits.map((split) => split.participant.id),
     createdAt: row.created_at,
-    // Mirrors the delete policy. This only hides the button; the database is
-    // still the thing that enforces it.
-    canDelete: row.created_by === userId || isOwner,
+    // Mirrors the delete policy, lock included. This only hides the button; the
+    // database is still the thing that enforces it.
+    canDelete: !room.isLocked && (row.created_by === userId || room.isOwner),
   }));
 }
 

@@ -477,6 +477,72 @@ body {
     grid-column: 1 / -1;
 }
 
+/* Payer filter above the payment list: toggle chips, any-of match. */
+.person-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.person-filter-label {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    margin-right: 0.25rem;
+}
+
+.filter-chip,
+.filter-clear {
+    width: auto;
+    height: 1.875rem;
+    padding: 0 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+}
+
+.filter-chip {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border: 1px solid hsl(var(--border));
+}
+
+.filter-chip.active {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+}
+
+.filter-clear {
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    border: none;
+    text-decoration: underline;
+}
+
+/* Name search and amount range share one row, half the width each; min and
+   max then split the amount half. minmax(0, 1fr) lets the inputs shrink
+   instead of pushing the row wider than the card. */
+.history-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem;
+}
+
+.amount-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem;
+}
+
+.history-filters + .person-filter {
+    margin-top: 0.75rem;
+}
+
+.history-filters + .payment-list,
+.person-filter + .payment-list {
+    margin-top: 1rem;
+}
+
 /* Scrollable Payment List (approx 10 items) */
 .payment-history-section .payment-list {
     max-height: 600px;
@@ -551,6 +617,7 @@ input[type="text"],
 input[type="number"],
 input[type="email"],
 input[type="password"],
+input[type="search"],
 select {
     width: 100%;
     height: 2.5rem;
@@ -568,6 +635,7 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,
+input[type="search"]:focus,
 select:focus {
     outline: none;
     border-color: hsl(var(--ring));
@@ -806,6 +874,13 @@ input[type="checkbox"] {
     margin-top: 0.25rem;
 }
 
+/* The number people scan for, so it stands out from the muted detail text. */
+.payment-amount {
+    font-size: 1rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+}
+
 .empty-state {
     text-align: center;
     color: hsl(var(--muted-foreground));
@@ -837,6 +912,7 @@ input[type="checkbox"] {
     input[type="number"],
     input[type="email"],
     input[type="password"],
+    input[type="search"],
     select {
         font-size: 16px;
     }
@@ -935,6 +1011,12 @@ input[type="checkbox"] {
 @media (max-width: 420px) {
     .checkbox-group {
         /* 140px tracks leave an awkward gap at this width; one column reads better. */
+        grid-template-columns: 1fr;
+    }
+
+    /* Three inputs in one row are too cramped on a phone: search gets its own
+       row, min/max stay side by side beneath it. */
+    .history-filters {
         grid-template-columns: 1fr;
     }
 

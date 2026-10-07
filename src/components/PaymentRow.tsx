@@ -36,6 +36,9 @@ export function PaymentRow({
   }, EMPTY);
 
   function handleRemove() {
+    const question = `Delete "${payment.description}" ($${payment.amount.toFixed(2)} paid by ${payment.payer})? Balances will be recalculated. This cannot be undone.`;
+    if (!window.confirm(question)) return;
+
     startRemoving(async () => {
       const result = await removePayment(roomId, payment.id);
       if (result.error) window.alert(result.error);
@@ -77,7 +80,7 @@ export function PaymentRow({
             history of previous values, so anything more would be invented. */}
         {payment.editedAt && <span className="room-badge muted-badge">✏️ edited</span>}
         <div className="payment-details">
-          💰 ${payment.amount.toFixed(2)} paid by {payment.payer}
+          💰 <span className="payment-amount">${payment.amount.toFixed(2)}</span> paid by {payment.payer}
           <br />
           👥 Split among {payment.splitAmong.length}{' '}
           {payment.splitAmong.length === 1 ? 'person' : 'people'}: {payment.splitAmong.join(', ')}

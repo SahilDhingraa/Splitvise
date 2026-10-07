@@ -477,33 +477,197 @@ body {
     grid-column: 1 / -1;
 }
 
-/* Payer filter above the payment list: toggle chips, any-of match. */
-.person-filter {
-    display: flex;
+/* Title, count, Filters and Export share one row, wrapping on a narrow phone. */
+.payment-history-section h2 {
     flex-wrap: wrap;
+    row-gap: 0.75rem;
+}
+
+/* Filters button, right after the Payment History heading. A compact pill
+   matching the Export button; filled while the filter panel is open, with a
+   badge counting the filters in use. */
+.filter-toggle {
+    width: auto;
+    height: 2rem;
+    padding: 0 0.75rem;
+    gap: 0.375rem;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.filter-toggle:hover {
+    opacity: 1;
+    background-color: hsl(var(--secondary));
+}
+
+.filter-toggle svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.25;
+    stroke-linecap: round;
+}
+
+.filter-toggle.active {
+    background-color: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.filter-badge {
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 0.3125rem;
+    border-radius: 999px;
+    background-color: hsl(var(--primary-foreground));
+    color: hsl(var(--primary));
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.125rem;
+    text-align: center;
+}
+
+/* The panel the Filters button opens: a tinted inset box with labelled
+   fields, so it reads as one control group rather than loose inputs. */
+.filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background-color: hsl(var(--secondary) / 0.5);
+    animation: filter-total-in 0.2s ease-out;
+}
+
+.filter-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.filter-reset {
+    width: auto;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    border: none;
+    font-size: 0.8125rem;
+}
+
+.filter-reset:hover {
+    opacity: 1;
+    color: hsl(var(--foreground));
+    text-decoration: underline;
+}
+
+/* Search and amount side by side; minmax(0, 1fr) lets them shrink instead of
+   pushing the card wider. */
+.filter-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.filter-field-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* An input with an icon or ₹ sitting inside its left edge. */
+.filter-input {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.filter-input svg,
+.filter-input-prefix {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+}
+
+.filter-input svg {
+    width: 0.9375rem;
+    height: 0.9375rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+.filter-input-prefix {
+    font-size: 0.875rem;
+}
+
+.filter-panel input[type="search"],
+.filter-panel input[type="number"] {
+    height: 2.25rem;
+    padding-left: 2.125rem;
+    background-color: hsl(var(--card));
+}
+
+.filter-panel input[type="number"] {
+    padding-left: 1.75rem;
+}
+
+.amount-range {
+    display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.person-filter-label {
-    font-size: 0.8125rem;
+.amount-range-sep {
     color: hsl(var(--muted-foreground));
-    margin-right: 0.25rem;
+    flex-shrink: 0;
 }
 
-.filter-chip,
-.filter-clear {
-    width: auto;
-    height: 1.875rem;
-    padding: 0 0.75rem;
-    border-radius: 999px;
-    font-size: 0.8125rem;
+/* Payer chips: any-of match on who paid. */
+.person-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .filter-chip {
-    background-color: hsl(var(--secondary));
-    color: hsl(var(--secondary-foreground));
+    width: auto;
+    height: 1.875rem;
+    padding: 0 0.875rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
     border: 1px solid hsl(var(--border));
+}
+
+.filter-chip:hover {
+    opacity: 1;
+    border-color: hsl(var(--muted-foreground));
 }
 
 .filter-chip.active {
@@ -512,35 +676,166 @@ body {
     border-color: hsl(var(--primary));
 }
 
-.filter-clear {
-    background-color: transparent;
-    color: hsl(var(--muted-foreground));
-    border: none;
-    text-decoration: underline;
+.filter-chip.active::before {
+    content: '✓';
+    margin-right: 0.375rem;
+    font-size: 0.75rem;
 }
 
-/* Name search and amount range share one row, half the width each; min and
-   max then split the amount half. minmax(0, 1fr) lets the inputs shrink
-   instead of pushing the row wider than the card. */
-.history-filters {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.75rem;
-}
-
-.amount-filter {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.75rem;
-}
-
-.history-filters + .person-filter {
-    margin-top: 0.75rem;
-}
-
-.history-filters + .payment-list,
-.person-filter + .payment-list {
+.filter-panel + .payment-list,
+.filter-total + .payment-list {
     margin-top: 1rem;
+}
+
+/* Sits at the right end of the Payment History heading. */
+.export-btn {
+    margin-left: auto;
+    width: auto;
+    height: 2rem;
+    padding: 0 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+/* Sum of the filtered payments, shown only while a filter is active. Styled
+   as a small stat card: label, headline figure, share of all spending. */
+.filter-panel + .filter-total {
+    margin-top: 1rem;
+}
+
+.filter-total {
+    padding: 1rem 1.25rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background:
+        linear-gradient(135deg, hsl(var(--secondary)) 0%, hsl(var(--card)) 100%);
+    animation: filter-total-in 0.2s ease-out;
+}
+
+@keyframes filter-total-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+.filter-total-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+/* Matches the small uppercase headings on the balance cards. */
+.filter-total-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    overflow-wrap: anywhere;
+}
+
+.filter-total-amount {
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.125rem;
+}
+
+.filter-total-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-align: right;
+}
+
+.filter-total-share {
+    font-size: 1rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+}
+
+/* Proportion bar: a muted track with a foreground fill. */
+.share-bar {
+    height: 0.375rem;
+    margin-top: 0.75rem;
+    border-radius: 999px;
+    background-color: hsl(var(--foreground) / 0.08);
+    overflow: hidden;
+}
+
+.share-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background-color: hsl(var(--foreground));
+    transition: width 0.3s ease;
+}
+
+.share-bar.thin {
+    height: 0.25rem;
+    margin-top: 0.375rem;
+}
+
+.share-bar.thin > span {
+    background-color: hsl(var(--muted-foreground));
+}
+
+.filter-total-count {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    font-variant-numeric: tabular-nums;
+}
+
+/* Per-person split when several payers are picked, biggest spender first. */
+.filter-total-breakdown {
+    list-style: none;
+    margin-top: 0.875rem;
+    padding-top: 0.875rem;
+    border-top: 1px dashed hsl(var(--border));
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.breakdown-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.breakdown-amount {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .filter-total,
+    .filter-panel {
+        animation: none;
+    }
+
+    .share-bar > span {
+        transition: none;
+    }
 }
 
 /* Scrollable Payment List (approx 10 items) */
@@ -1014,9 +1309,9 @@ input[type="checkbox"] {
         grid-template-columns: 1fr;
     }
 
-    /* Three inputs in one row are too cramped on a phone: search gets its own
-       row, min/max stay side by side beneath it. */
-    .history-filters {
+    /* Search and amount are too cramped side by side on a phone: each gets
+       its own row (min and max stay together). */
+    .filter-fields {
         grid-template-columns: 1fr;
     }
 

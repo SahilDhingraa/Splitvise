@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import { removePayment, updatePayment, type ActionResult } from '@/app/actions';
 import { PaymentFields } from './PaymentFields';
+import { formatMoney } from '@/lib/money';
 import type { Participant, Payment } from '@/lib/types';
 
 const EMPTY: ActionResult = { error: null };
@@ -36,7 +37,7 @@ export function PaymentRow({
   }, EMPTY);
 
   function handleRemove() {
-    const question = `Delete "${payment.description}" ($${payment.amount.toFixed(2)} paid by ${payment.payer})? Balances will be recalculated. This cannot be undone.`;
+    const question = `Delete "${payment.description}" (${formatMoney(payment.amount)} paid by ${payment.payer})? Balances will be recalculated. This cannot be undone.`;
     if (!window.confirm(question)) return;
 
     startRemoving(async () => {
@@ -80,7 +81,7 @@ export function PaymentRow({
             history of previous values, so anything more would be invented. */}
         {payment.editedAt && <span className="room-badge muted-badge">✏️ edited</span>}
         <div className="payment-details">
-          💰 <span className="payment-amount">${payment.amount.toFixed(2)}</span> paid by {payment.payer}
+          💰 <span className="payment-amount">{formatMoney(payment.amount)}</span> paid by {payment.payer}
           <br />
           👥 Split among {payment.splitAmong.length}{' '}
           {payment.splitAmong.length === 1 ? 'person' : 'people'}: {payment.splitAmong.join(', ')}

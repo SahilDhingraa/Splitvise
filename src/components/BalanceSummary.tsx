@@ -1,7 +1,6 @@
 import { calculateBalances, calculateSettlements, isSettled } from '@/lib/balances';
+import { formatMoney } from '@/lib/money';
 import type { Participant, Payment } from '@/lib/types';
-
-const money = (amount: number) => `$${amount.toFixed(2)}`;
 
 // Derived from participants + payments, so it recomputes on every render rather
 // than sitting behind a "Calculate" button that can go stale.
@@ -40,8 +39,8 @@ export function BalanceSummary({
                   <span>👤 {balance.participant}</span>
                   <span className={balance.amount >= 0 ? 'amount-positive' : 'amount-negative'}>
                     {balance.amount >= 0
-                      ? `Should receive ${money(balance.amount)}`
-                      : `Owes ${money(Math.abs(balance.amount))}`}
+                      ? `Should receive ${formatMoney(balance.amount)}`
+                      : `Owes ${formatMoney(Math.abs(balance.amount))}`}
                   </span>
                 </div>
               ))
@@ -61,7 +60,7 @@ export function BalanceSummary({
                   <span>
                     💸 {settlement.from} → {settlement.to}
                   </span>
-                  <span className="amount-negative">{money(settlement.amount)}</span>
+                  <span className="amount-negative">{formatMoney(settlement.amount)}</span>
                 </div>
               ))
             )}

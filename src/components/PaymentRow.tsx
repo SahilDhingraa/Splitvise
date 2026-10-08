@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import { removePayment, updatePayment, type ActionResult } from '@/app/actions';
 import { PaymentFields } from './PaymentFields';
+import { isTransfer } from '@/lib/balances';
 import { formatMoney } from '@/lib/money';
 import type { Participant, Payment } from '@/lib/types';
 
@@ -37,7 +38,11 @@ export function PaymentRow({
   }, EMPTY);
 
   function handleRemove() {
-    const question = `Delete "${payment.description}" (${formatMoney(payment.amount)} paid by ${payment.payer})? Balances will be recalculated. This cannot be undone.`;
+    const what =
+      payment.kind === 'transfer'
+        ? `${formatMoney(payment.amount)} given by ${payment.payer} to ${payment.splitAmong.join(', ')}`
+        : `${formatMoney(payment.amount)} paid by ${payment.payer}`;
+    const question = `Delete "${payment.description}" (${what})? Balances will be recalculated. This cannot be undone.`;
     if (!window.confirm(question)) return;
 
     startRemoving(async () => {
@@ -74,17 +79,37 @@ export function PaymentRow({
   }
 
   return (
-    <li className="payment-item">
+    <li className={`payment-item${payment.kind === 'transfer' ? ' transfer-item' : ''}`}>
       <div>
         <strong>{payment.description}</strong>
+        {payment.kind === 'transfer' ? (
+          <span className="room-badge transfer-badge">💸 money given</span>
+        ) : (
+          isTransfer(payment) && (
+            <span className="room-badge transfer-badge">
+              💸 counts as received by {payment.splitAmong[0]}
+            </span>
+          )
+        )}
         {/* Says an edit happened without claiming what changed -- the room has no
             history of previous values, so anything more would be invented. */}
         {payment.editedAt && <span className="room-badge muted-badge">✏️ edited</span>}
         <div className="payment-details">
-          💰 <span className="payment-amount">{formatMoney(payment.amount)}</span> paid by {payment.payer}
-          <br />
-          👥 Split among {payment.splitAmong.length}{' '}
-          {payment.splitAmong.length === 1 ? 'person' : 'people'}: {payment.splitAmong.join(', ')}
+          {payment.kind === 'transfer' ? (
+            <>
+              💸 <span className="payment-amount">{formatMoney(payment.amount)}</span> given by{' '}
+              {payment.payer} → {payment.splitAmong.join(', ')}
+            </>
+          ) : (
+            <>
+              💰 <span className="payment-amount">{formatMoney(payment.amount)}</span> paid by{' '}
+              {payment.payer}
+              <br />
+              👥 Split among {payment.splitAmong.length}{' '}
+              {payment.splitAmong.length === 1 ? 'person' : 'people'}:{' '}
+              {payment.splitAmong.join(', ')}
+            </>
+          )}
           <br />
           🕒 <LocalTime iso={payment.createdAt} />
           {payment.editedAt && (

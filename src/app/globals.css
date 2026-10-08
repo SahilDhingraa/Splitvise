@@ -212,6 +212,17 @@ body {
     white-space: nowrap;
 }
 
+/* Cash handed between people, marked so it is not mistaken for spending. */
+.transfer-badge {
+    border-color: #10b98166;
+    background-color: #10b9811a;
+    color: #059669;
+}
+
+.dark .transfer-badge {
+    color: #34d399;
+}
+
 .muted-badge {
     background-color: transparent;
     color: hsl(var(--muted-foreground));
@@ -477,20 +488,36 @@ body {
     grid-column: 1 / -1;
 }
 
-/* Title, count, Filters and Export share one row, wrapping on a narrow phone. */
-.payment-history-section h2 {
-    flex-wrap: wrap;
-    row-gap: 0.75rem;
+/* Title and count on the left, Filters and Export on the right. On a phone
+   the buttons move to their own row beneath the title (see the media query). */
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
 }
 
-/* Filters button, right after the Payment History heading. A compact pill
-   matching the Export button; filled while the filter panel is open, with a
-   badge counting the filters in use. */
-.filter-toggle {
+.payment-history-section .history-header h2 {
+    margin-bottom: 0;
+    min-width: 0;
+}
+
+.history-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Filters and Export Excel: matching outlined pills with a leading icon.
+   Filters fills in while its panel is open, with a badge counting the filters
+   in use. */
+.history-action {
     width: auto;
-    height: 2rem;
-    padding: 0 0.75rem;
-    gap: 0.375rem;
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    gap: 0.4375rem;
     border-radius: 999px;
     border: 1px solid hsl(var(--border));
     background-color: hsl(var(--card));
@@ -501,18 +528,20 @@ body {
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-.filter-toggle:hover {
+.history-action:hover {
     opacity: 1;
     background-color: hsl(var(--secondary));
 }
 
-.filter-toggle svg {
-    width: 0.875rem;
-    height: 0.875rem;
+.history-action svg {
+    flex-shrink: 0;
+    width: 0.9375rem;
+    height: 0.9375rem;
     fill: none;
     stroke: currentColor;
     stroke-width: 2.25;
     stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .filter-toggle.active {
@@ -685,18 +714,6 @@ body {
 .filter-panel + .payment-list,
 .filter-total + .payment-list {
     margin-top: 1rem;
-}
-
-/* Sits at the right end of the Payment History heading. */
-.export-btn {
-    margin-left: auto;
-    width: auto;
-    height: 2rem;
-    padding: 0 0.875rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    letter-spacing: 0;
-    white-space: nowrap;
 }
 
 /* Sum of the filtered payments, shown only while a filter is active. Styled
@@ -881,6 +898,43 @@ body {
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.4;
+}
+
+/* Expense / Money given switch at the top of the payment form. */
+.kind-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    margin-bottom: 1.25rem;
+    border-radius: var(--radius);
+    background-color: hsl(var(--secondary));
+    border: 1px solid hsl(var(--border));
+}
+
+.kind-switch button {
+    height: 2.25rem;
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    border: none;
+    border-radius: calc(var(--radius) - 0.125rem);
+}
+
+.kind-switch button:hover {
+    opacity: 1;
+    color: hsl(var(--foreground));
+}
+
+.kind-switch button.active {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.kind-hint {
+    margin: -0.5rem 0 1.25rem;
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
 }
 
 /* Form Elements */
@@ -1105,9 +1159,13 @@ input[type="checkbox"] {
     border: 1px solid hsl(var(--border));
 }
 
+/* Trip cost spans the full width; Individual Balances and Recommended
+   Settlements split the row beneath it in half. A fixed two columns, not
+   auto-fit, so a wide screen never leaves an empty third column beside them.
+   One column at tablet width and below (see the media query). */
 .balance-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.5rem;
     margin-top: 1.5rem;
 }
@@ -1136,6 +1194,181 @@ input[type="checkbox"] {
 .balance-card h3 .section-count {
     font-size: 0.6875rem;
     letter-spacing: 0;
+}
+
+/* Collapse control at the right end of a section heading: a quiet round icon
+   button, so it does not compete with the title. The chevron points up while
+   the section is open ("fold away") and down when collapsed ("open"). */
+.section-toggle {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: 999px;
+    border: none;
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.section-toggle:hover {
+    opacity: 1;
+    background-color: hsl(var(--foreground) / 0.08);
+    color: hsl(var(--foreground));
+}
+
+.section-toggle:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+.section-toggle svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform: rotate(180deg);
+    transition: transform 0.2s ease;
+}
+
+.collapsed .section-toggle svg {
+    transform: none;
+}
+
+/* Nothing sits under a collapsed heading, so drop its bottom gap. */
+.section h2.collapsed {
+    margin-bottom: 0;
+}
+
+/* Spans the full balance grid, above the balances and settlements cards. */
+.trip-cost-card {
+    grid-column: 1 / -1;
+}
+
+.trip-cost-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+}
+
+.trip-cost-card h3 {
+    margin-bottom: 0;
+}
+
+.trip-cost-total {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.trip-cost-total strong {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+}
+
+.trip-cost-note {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.trip-cost-list {
+    list-style: none;
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.75rem;
+}
+
+/* One card per person: name on top, then the sum written out like a receipt
+   (paid − received ± settle-up = trip cost), then their slice of the trip. */
+.trip-cost-row {
+    padding: 0.875rem 1rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background-color: hsl(var(--secondary) / 0.4);
+}
+
+.trip-cost-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+}
+
+.trip-cost-name {
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trip-cost-share {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.trip-cost-math {
+    margin-top: 0.625rem;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.trip-cost-math > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.125rem 0;
+}
+
+.trip-cost-math dt {
+    color: hsl(var(--muted-foreground));
+}
+
+.trip-cost-math dd {
+    margin: 0;
+    text-align: right;
+}
+
+.trip-cost-muted {
+    color: hsl(var(--muted-foreground));
+}
+
+/* The answer line, under a rule like the total on a bill. */
+.trip-cost-math .trip-cost-result {
+    align-items: baseline;
+    margin-top: 0.375rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid hsl(var(--border));
+}
+
+.trip-cost-result dt {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+}
+
+.trip-cost-result dd {
+    font-size: 1.125rem;
+    font-weight: 700;
+}
+
+.share-bar.trip-cost-bar {
+    grid-column: 1 / -1;
+    margin-top: 0.625rem;
 }
 
 .debt-item {
@@ -1299,6 +1532,29 @@ input[type="checkbox"] {
 
     .room-title {
         font-size: 1.5rem;
+    }
+}
+
+/* Payment History heading ------------------------------------------------ */
+/* Below this the title and both buttons no longer fit on one line. The buttons
+   take their own full-width row under the title and share it evenly (one
+   button alone takes the whole row), a little taller for thumbs. */
+@media (max-width: 560px) {
+    .history-header {
+        flex-direction: column;
+        align-items: stretch;
+        margin-bottom: 1rem;
+    }
+
+    .history-actions {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+    }
+
+    .history-action {
+        width: 100%;
+        height: 2.5rem;
     }
 }
 

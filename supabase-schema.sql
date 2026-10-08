@@ -169,6 +169,12 @@ create table if not exists public.payments (
     amount      numeric(12, 2) not null check (amount > 0),
     description text not null check (length(trim(description)) > 0),
 
+    -- 'expense': money spent on the trip, split among payment_splits.
+    -- 'transfer': cash payer_id handed to the one participant in
+    -- payment_splits during the trip. It moves balances like an expense split
+    -- with one person, but is never counted as anyone's share of the trip.
+    kind        text not null default 'expense' check (kind in ('expense', 'transfer')),
+
     -- null => never edited. Set by the trigger below, never by the client, so
     -- the "edited" mark cannot be left off by whoever did the editing.
     edited_at   timestamptz,
@@ -178,6 +184,11 @@ create table if not exists public.payments (
 
 -- For databases created before editing existed.
 alter table public.payments add column if not exists edited_at timestamptz;
+
+-- For databases created before cash transfers existed. Every older row is an
+-- expense, which is what the default fills in.
+alter table public.payments add column if not exists kind text not null default 'expense'
+    check (kind in ('expense', 'transfer'));
 
 create table if not exists public.payment_splits (
     payment_id     uuid not null references public.payments (id) on delete cascade,

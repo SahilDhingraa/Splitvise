@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server';
-import type { Participant, Payment, Room } from './types';
+import type { Participant, Payment, PaymentKind, Room } from './types';
 
 // Reads. RLS scopes every row to rooms the caller belongs to, so none of these
 // filter by user by hand -- the database does it.
@@ -120,6 +120,7 @@ export async function getPayments(room: Room): Promise<Payment[]> {
     .select(
       `
         id,
+        kind,
         amount,
         description,
         created_at,
@@ -136,6 +137,7 @@ export async function getPayments(room: Room): Promise<Payment[]> {
 
   type Row = {
     id: string;
+    kind: PaymentKind;
     amount: string | number;
     description: string;
     created_at: string;
@@ -155,6 +157,7 @@ export async function getPayments(room: Room): Promise<Payment[]> {
 
     return {
       id: row.id,
+      kind: row.kind,
       payerId: row.payer.id,
       payer: row.payer.name,
       createdBy: row.created_by,

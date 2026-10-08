@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import type { PaymentKind } from '@/lib/types';
 
 // Every mutation lives here. These run on the server but under the caller's JWT,
 // so RLS is still the enforcement layer -- the checks below are for good error
@@ -364,7 +365,9 @@ export async function updateDisplayName(
 
 // The payer, amount, description and split set, as the form gives them. Shared
 // by recording a payment and editing one, which take exactly the same fields.
+// A transfer is stored the same way, with the recipient as the only split.
 type PaymentInput = {
+  kind: PaymentKind;
   payerId: string;
   amount: number;
   description: string;
@@ -375,9 +378,27 @@ async function readPaymentForm(
   roomId: string,
   formData: FormData,
 ): Promise<PaymentInput | ActionResult> {
+  const kind: PaymentKind = formData.get('kind') === 'transfer' ? 'transfer' : 'expense';
   const payerId = String(formData.get('payerId') ?? '');
   const amount = Number(formData.get('amount'));
   const description = String(formData.get('description') ?? '').trim();
+
+  if (kind === 'transfer') {
+    const recipientId = String(formData.get('recipientId') ?? '');
+    if (!payerId) return fail('Select who gave the money.');
+    if (!recipientId) return fail('Select who received the money.');
+    if (recipientId === payerId) return fail('Pick two different people.');
+    if (!Number.isFinite(amount) || amount <= 0) return fail('Enter a valid amount.');
+    // The note is optional for a transfer; the column is not.
+    return {
+      kind,
+      payerId,
+      amount,
+      description: description || 'Cash given',
+      splitAmongIds: [recipientId],
+    };
+  }
+
   const splitType = String(formData.get('splitType') ?? 'all');
   const selectedIds = formData.getAll('splitAmong').map(String);
 
@@ -401,7 +422,7 @@ async function readPaymentForm(
 
   if (splitAmongIds.length === 0) return fail('Select at least one person to split among.');
 
-  return { payerId, amount, description, splitAmongIds };
+  return { kind, payerId, amount, description, splitAmongIds };
 }
 
 function isFailure(result: PaymentInput | ActionResult): result is ActionResult {
@@ -418,12 +439,12 @@ export async function addPayment(
   const input = await readPaymentForm(roomId, formData);
   if (isFailure(input)) return input;
 
-  const { payerId, amount, description, splitAmongIds } = input;
+  const { kind, payerId, amount, description, splitAmongIds } = input;
   const supabase = await createClient();
 
   const { data: payment, error: paymentError } = await supabase
     .from('payments')
-    .insert({ room_id: roomId, payer_id: payerId, amount, description })
+    .insert({ room_id: roomId, kind, payer_id: payerId, amount, description })
     .select('id')
     .single();
 
@@ -461,7 +482,7 @@ export async function updatePayment(
   const input = await readPaymentForm(roomId, formData);
   if (isFailure(input)) return input;
 
-  const { payerId, amount, description, splitAmongIds } = input;
+  const { kind, payerId, amount, description, splitAmongIds } = input;
   const supabase = await createClient();
 
   // An edit spans two tables and PostgREST has no transactions, so keep what the
@@ -472,7 +493,7 @@ export async function updatePayment(
   // toward saying too much rather than too little.
   const { data: before, error: beforeError } = await supabase
     .from('payments')
-    .select('payer_id, amount, description, payment_splits ( participant_id )')
+    .select('kind, payer_id, amount, description, payment_splits ( participant_id )')
     .eq('id', paymentId)
     .maybeSingle();
 
@@ -486,7 +507,7 @@ export async function updatePayment(
   // for the row back is how we tell "done" from "not allowed".
   const { data: updated, error: updateError } = await supabase
     .from('payments')
-    .update({ payer_id: payerId, amount, description })
+    .update({ kind, payer_id: payerId, amount, description })
     .eq('id', paymentId)
     .select('id');
 
@@ -497,6 +518,7 @@ export async function updatePayment(
     await supabase
       .from('payments')
       .update({
+        kind: before.kind,
         payer_id: before.payer_id,
         amount: before.amount,
         description: before.description,

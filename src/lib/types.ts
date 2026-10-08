@@ -24,8 +24,16 @@ export type Participant = {
   isYou: boolean;
 };
 
+// An EXPENSE is money spent on the trip, split among people. A TRANSFER is
+// cash one person hands another during the trip (paying someone back early):
+// `payer` gave it and the single entry in `splitAmong` received it. A transfer
+// moves balances exactly like an expense with one person in the split, but it
+// is nobody's spending, so it never counts toward anyone's share of the trip.
+export type PaymentKind = 'expense' | 'transfer';
+
 export type Payment = {
   id: string;
+  kind: PaymentKind;
   payerId: string;
   payer: string;
   createdBy: string;
@@ -44,6 +52,18 @@ export type Payment = {
 export type Balance = {
   participant: string;
   amount: number;
+};
+
+export type TripCost = {
+  participant: string;
+  // Everything they handed over during the trip: expenses they paid plus cash
+  // they gave to other people.
+  paid: number;
+  // Cash other people handed them during the trip.
+  received: number;
+  // Their share of every expense they were split into: what the trip cost them
+  // once balances are settled, whoever happened to pay.
+  cost: number;
 };
 
 export type Settlement = {

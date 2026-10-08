@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { PaymentRow } from './PaymentRow';
+import { isTransfer } from '@/lib/balances';
 import { formatMoney } from '@/lib/money';
 import type { Participant, Payment } from '@/lib/types';
 
@@ -108,40 +109,49 @@ export function PaymentHistory({
 
   return (
     <div className="section payment-history-section">
-      <h2>
-        📜 Payment History{' '}
-        <span className="section-count">
-          {isFiltering ? `${visible.length} of ${payments.length}` : payments.length}
-        </span>
-        {payments.length > 0 && (
-          <button
-            type="button"
-            className={`filter-toggle${filtersOn ? ' active' : ''}`}
-            aria-pressed={filtersOn}
-            aria-expanded={filtersOn}
-            aria-controls="payment-filter-panel"
-            title={filtersOn ? 'Turn filters off' : 'Filter payments'}
-            onClick={() => setFiltersOn((on) => !on)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5h16M7 12h10M10 19h4" />
-            </svg>
-            Filters
-            {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
-          </button>
-        )}
-        {visible.length > 0 && (
-          <button
-            type="button"
-            className="secondary-btn export-btn"
-            onClick={handleExport}
-            disabled={isExporting}
-            title={isFiltering ? 'Export the filtered payments' : 'Export all payments'}
-          >
-            {isExporting ? 'Exporting…' : '⬇ Export Excel'}
-          </button>
-        )}
-      </h2>
+      {/* Title on the left, actions on the right; on a phone the actions drop
+          to their own row and split it evenly. */}
+      <div className="history-header">
+        <h2>
+          📜 Payment History{' '}
+          <span className="section-count">
+            {isFiltering ? `${visible.length} of ${payments.length}` : payments.length}
+          </span>
+        </h2>
+        <div className="history-actions">
+          {payments.length > 0 && (
+            <button
+              type="button"
+              className={`history-action filter-toggle${filtersOn ? ' active' : ''}`}
+              aria-pressed={filtersOn}
+              aria-expanded={filtersOn}
+              aria-controls="payment-filter-panel"
+              title={filtersOn ? 'Turn filters off' : 'Filter payments'}
+              onClick={() => setFiltersOn((on) => !on)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5h16M7 12h10M10 19h4" />
+              </svg>
+              Filters
+              {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
+            </button>
+          )}
+          {visible.length > 0 && (
+            <button
+              type="button"
+              className="history-action"
+              onClick={handleExport}
+              disabled={isExporting}
+              title={isFiltering ? 'Export the filtered payments' : 'Export all payments'}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+              </svg>
+              {isExporting ? 'Exporting…' : 'Export Excel'}
+            </button>
+          )}
+        </div>
+      </div>
 
       {filtersOn && payments.length > 0 && (
         <div className="filter-panel" id="payment-filter-panel">
@@ -298,8 +308,13 @@ export function PaymentHistory({
   );
 }
 
+// Spending only: cash handed between people is not money spent on the trip,
+// so it would inflate every total and share it was added to.
 function sumAmounts(list: Payment[]): number {
-  return list.reduce((sum, payment) => sum + payment.amount, 0);
+  return list.reduce(
+    (sum, payment) => (isTransfer(payment) ? sum : sum + payment.amount),
+    0,
+  );
 }
 
 function displayName(participant: Participant): string {

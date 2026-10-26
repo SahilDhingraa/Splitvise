@@ -49,11 +49,25 @@ export function LoginForm({ next }: { next: string }) {
       <input type="hidden" name="next" value={next} />
 
       <div className="form-group">
+        <label htmlFor="displayName">Display name</label>
+        <input
+          id="displayName"
+          name="displayName"
+          type="text"
+          placeholder="Only used when creating an account"
+          autoComplete="name"
+          value={displayName}
+          onChange={(event) => setDisplayName(event.target.value)}
+        />
+      </div>
+
+      <div className="form-group">
         <label htmlFor="email">Email</label>
         <input
           id="email"
           name="email"
           type="email"
+          placeholder="test@example.com"
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -67,23 +81,11 @@ export function LoginForm({ next }: { next: string }) {
           id="password"
           name="password"
           type="password"
+          placeholder="********"
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="displayName">Display name</label>
-        <input
-          id="displayName"
-          name="displayName"
-          type="text"
-          placeholder="Only used when creating an account"
-          autoComplete="name"
-          value={displayName}
-          onChange={(event) => setDisplayName(event.target.value)}
         />
       </div>
 

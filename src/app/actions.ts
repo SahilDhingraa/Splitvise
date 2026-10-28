@@ -267,6 +267,36 @@ export async function removeParticipant(roomId: string, participantId: string): 
 
   const supabase = await createClient();
 
+  // The database cascade deletes the payments they paid, and drops them from
+  // every split -- which re-splits shared payments among everyone else. A
+  // payment where they were the ONLY one in the split (cash given to them, or
+  // an expense paid just for them) would be left split among nobody: still on
+  // the list, but ignored by the balances. Delete those first, so nothing is
+  // left orphaned.
+  const { data: splits, error: splitsError } = await supabase
+    .from('payments')
+    .select('id, payer_id, payment_splits ( participant_id )')
+    .eq('room_id', roomId);
+  if (splitsError) return fail(splitsError.message);
+
+  const orphaned = ((splits ?? []) as unknown as {
+    id: string;
+    payer_id: string;
+    payment_splits: { participant_id: string }[];
+  }[])
+    .filter(
+      (payment) =>
+        payment.payer_id !== participantId &&
+        payment.payment_splits.length === 1 &&
+        payment.payment_splits[0].participant_id === participantId,
+    )
+    .map((payment) => payment.id);
+
+  if (orphaned.length > 0) {
+    const { error: orphanError } = await supabase.from('payments').delete().in('id', orphaned);
+    if (orphanError) return fail(orphanError.message);
+  }
+
   const { error } = await supabase.from('participants').delete().eq('id', participantId);
   if (error) return fail(error.message);
 

@@ -78,16 +78,25 @@ export function calculateTripCosts(participants: Participant[], payments: Paymen
 // Greedily match the largest creditor against the largest debtor. This does not
 // always produce the theoretical minimum number of transfers (that problem is
 // NP-hard), but it is close and it always settles everyone.
+//
+// Works in whole paise. "Mark paid" records each settlement rounded to the
+// paisa, so settlements must already be exact paisa amounts that add up to each
+// person's (rounded) balance. Otherwise every recorded transfer leaves up to
+// half a paisa behind, and someone with a few of them ends up with a fresh
+// ₹0.01 debt that is only rounding.
 export function calculateSettlements(balances: Balance[]): Settlement[] {
+  // One paisa or less is square, the same slack as isSettled.
+  const slack = Math.round(EPSILON * 100);
+
   const creditors = balances
-    .filter((entry) => entry.amount > EPSILON)
-    .map((entry) => ({ name: entry.participant, amount: entry.amount }))
-    .sort((a, b) => b.amount - a.amount);
+    .map((entry) => ({ name: entry.participant, paise: Math.round(entry.amount * 100) }))
+    .filter((entry) => entry.paise > slack)
+    .sort((a, b) => b.paise - a.paise);
 
   const debtors = balances
-    .filter((entry) => entry.amount < -EPSILON)
-    .map((entry) => ({ name: entry.participant, amount: Math.abs(entry.amount) }))
-    .sort((a, b) => b.amount - a.amount);
+    .map((entry) => ({ name: entry.participant, paise: -Math.round(entry.amount * 100) }))
+    .filter((entry) => entry.paise > slack)
+    .sort((a, b) => b.paise - a.paise);
 
   const settlements: Settlement[] = [];
   let i = 0;
@@ -96,17 +105,17 @@ export function calculateSettlements(balances: Balance[]): Settlement[] {
   while (i < creditors.length && j < debtors.length) {
     const creditor = creditors[i];
     const debtor = debtors[j];
-    const amount = Math.min(creditor.amount, debtor.amount);
+    const paise = Math.min(creditor.paise, debtor.paise);
 
-    if (amount > EPSILON) {
-      settlements.push({ from: debtor.name, to: creditor.name, amount });
+    if (paise > slack) {
+      settlements.push({ from: debtor.name, to: creditor.name, amount: paise / 100 });
     }
 
-    creditor.amount -= amount;
-    debtor.amount -= amount;
+    creditor.paise -= paise;
+    debtor.paise -= paise;
 
-    if (creditor.amount < EPSILON) i++;
-    if (debtor.amount < EPSILON) j++;
+    if (creditor.paise <= slack) i++;
+    if (debtor.paise <= slack) j++;
   }
 
   return settlements;

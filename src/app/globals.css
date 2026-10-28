@@ -248,10 +248,17 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 
 /* A tab's content scrolls inside its own box, so long ledgers do not push the
    page on forever. Sized to the viewport, with a floor for short windows. */
-.scroll-area { max-height: max(360px, calc(100dvh - 200px)); overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; margin-right: -6px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent }
+.scroll-area { max-height: max(360px, calc(100dvh - 200px)); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-left: 8px; margin-left: -8px; padding-right: 6px; margin-right: -6px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent }
 .scroll-area::-webkit-scrollbar { width: 8px }
 .scroll-area::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px }
 .scroll-area::-webkit-scrollbar-track { background: transparent }
+/* The payment list: its own large box that scrolls inside, while the page
+   around it scrolls as normal. Tall enough to read a good run of payments,
+   however much the filters and summary above it take up. */
+.pay-box { max-height: max(480px, calc(100dvh - 120px)); margin: 12px 0 0; padding: 0 16px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card) }
+.pay-box .date-h { background: var(--surface); margin-top: 0; padding-top: 14px }
+.pay-box > .empty { margin: 14px 0 6px }
+@media (max-width: 640px) { .pay-box { padding: 0 12px 6px } }
 .tab { height: 42px; padding: 0 14px; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; transition: color .12s }
 .tab:hover { color: var(--ink-2) }
 .tab.on { color: var(--ink); border-color: var(--accent) }

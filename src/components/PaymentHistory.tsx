@@ -24,7 +24,6 @@ export function PaymentHistory({
   payments: Payment[];
   participants: Participant[];
 }) {
-  const [selected, setSelected] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const { alert, dialog } = useDialog();
 
@@ -41,45 +40,28 @@ export function PaymentHistory({
   const query = search.trim().toLowerCase();
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
 
-  // "Involving" sits in the toolbar too (a dropdown on desktop, inside the ⋯
-  // menu on a phone): payments where the person paid, was in the split, or
-  // received the money. Unlike "Paid by" below, it always applies.
-  const [involving, setInvolving] = useState<string[]>([]);
-  const involvingIds = involving.filter((id) => participants.some((p) => p.id === id));
+  // "Paid by" sits in the toolbar too (a dropdown on desktop, inside the ⋯ menu
+  // on a phone). It matches on who paid, not on who was in the split: most
+  // payments are split among everyone, so every person would match them all.
+  // Selections for people who are no longer in the room (removed or merged
+  // away) are dropped, so a stale id cannot leave the list silently filtered.
+  const [payers, setPayers] = useState<string[]>([]);
+  const payerIds = payers.filter((id) => participants.some((p) => p.id === id));
   // The people list inside the phone ⋯ menu starts expanded when someone is
   // already picked, until it is opened or closed by hand.
   const [peopleOpenChoice, setPeopleOpen] = useState<boolean | null>(null);
-  const peopleOpen = peopleOpenChoice ?? involvingIds.length > 0;
+  const peopleOpen = peopleOpenChoice ?? payerIds.length > 0;
 
-  // "Show their payments" on the People tab lands here with that one person
-  // picked and the other toolbar filters cleared.
-  const tabs = useRoomTabs();
-  const [seenRequest, setSeenRequest] = useState<PaymentsRequest | null>(tabs?.request ?? null);
-  if (tabs && tabs.request !== seenRequest) {
-    setSeenRequest(tabs.request);
-    if (tabs.request) {
-      setInvolving([tabs.request.participantId]);
-      setSearch('');
-      setKindFilter('all');
-    }
-  }
-
-  function toggleInvolving(id: string | null) {
-    setInvolving((current) =>
+  function togglePayer(id: string | null) {
+    setPayers((current) =>
       id === null ? [] : current.includes(id) ? current.filter((other) => other !== id) : [...current, id],
     );
   }
 
-  // The Filters button shows and hides the amount and payer filters. While
-  // hidden, they do not apply, but what was typed or picked is kept, so turning
-  // filters back on restores the same view.
+  // The Filters button shows and hides the amount filter. While hidden it does
+  // not apply, but what was typed is kept, so turning filters back on restores
+  // the same view.
   const [filtersOn, setFiltersOn] = useState(false);
-
-  // Drop selections for people who are no longer in the room (removed or
-  // merged away), so a stale id cannot leave the list silently filtered.
-  const activeIds = filtersOn
-    ? selected.filter((id) => participants.some((p) => p.id === id))
-    : [];
 
   // Kept as the raw text so a half-typed value ("12.") stays in the box. An
   // empty or non-numeric bound means "no limit on that side".
@@ -88,42 +70,44 @@ export function PaymentHistory({
   const min = filtersOn ? parseBound(minText) : null;
   const max = filtersOn ? parseBound(maxText) : null;
 
-  // All filters apply together. The person filter is on who paid: matching on
-  // the split too would be near-useless, since most payments are split among
-  // everyone, so every person would match them all. Amount bounds are
-  // inclusive, so "min 50" keeps a ₹50.00 payment.
+  // "Show payments they made" on the People tab lands here with that one person
+  // picked and every other filter cleared, so nothing hides any of them.
+  const tabs = useRoomTabs();
+  const [seenRequest, setSeenRequest] = useState<PaymentsRequest | null>(tabs?.request ?? null);
+  if (tabs && tabs.request !== seenRequest) {
+    setSeenRequest(tabs.request);
+    if (tabs.request) {
+      setPayers([tabs.request.participantId]);
+      setSearch('');
+      setKindFilter('all');
+      setMinText('');
+      setMaxText('');
+    }
+  }
+
+  // All filters apply together. Amount bounds are inclusive, so "min 50" keeps
+  // a ₹50.00 payment.
   const visible = payments.filter(
     (payment) =>
-      (kindFilter === 'all' || payment.kind === kindFilter) &&
-      (activeIds.length === 0 || activeIds.includes(payment.payerId)) &&
-      (involvingIds.length === 0 ||
-        involvingIds.some((id) => payment.payerId === id || payment.splitAmongIds.includes(id))) &&
-      (query === '' || payment.description.toLowerCase().includes(query)) &&
+      matchesKind(payment, kindFilter) &&
+      (payerIds.length === 0 || payerIds.includes(payment.payerId)) &&
+      (query === '' || matchesSearch(payment, query)) &&
       (min === null || payment.amount >= min) &&
       (max === null || payment.amount <= max),
   );
 
-  function toggle(id: string) {
-    setSelected((current) =>
-      current.includes(id) ? current.filter((other) => other !== id) : [...current, id],
-    );
-  }
-
   const isFiltering =
     kindFilter !== 'all' ||
-    activeIds.length > 0 ||
-    involvingIds.length > 0 ||
+    payerIds.length > 0 ||
     query !== '' ||
     min !== null ||
     max !== null;
 
-  // How many of the panel's filters (person, amount) are set, for the badge on
-  // the Filters button.
-  const panelFilterCount = (activeIds.length > 0 ? 1 : 0) + (min !== null || max !== null ? 1 : 0);
+  // Whether the panel's amount filter is set, for the badge on the Filters button.
+  const panelFilterCount = min !== null || max !== null ? 1 : 0;
 
   function resetFilters() {
-    setSelected([]);
-    setInvolving([]);
+    setPayers([]);
     setSearch('');
     setMinText('');
     setMaxText('');
@@ -131,25 +115,40 @@ export function PaymentHistory({
   }
 
   // Totals respect every filter, so "Alice" + "min 50" sums only Alice's
-  // payments of ₹50 or more. With several payers picked, each gets their own
-  // subtotal alongside the combined figure.
-  const visibleTotal = sumAmounts(visible);
-  const allTotal = sumAmounts(payments);
-  const payerTotals = participants
-    .filter((participant) => activeIds.includes(participant.id))
-    .map((participant) => ({
-      participant,
-      total: sumAmounts(visible.filter((payment) => payment.payerId === participant.id)),
-    }))
+  // payments of ₹50 or more.
+  //
+  // The total is every rupee in the payments shown: expenses paid for plus
+  // cash handed to someone. Each is also shown on its own line. "Given" uses
+  // the same rule as the balances: a transfer, or an expense paid for exactly
+  // one other person. With payers picked, the list holds only their payments,
+  // so the total is what came out of their pocket, and each person gets their
+  // own figure alongside the combined one.
+  const personTotals = participants
+    .filter((participant) => payerIds.includes(participant.id))
+    .map((participant) => {
+      const theirs = visible.filter((payment) => payment.payerId === participant.id);
+      const given = sumWhere(theirs, isTransfer);
+      const total = sumWhere(theirs, () => true);
+      return { participant, expenses: total - given, given, total };
+    })
     .sort((a, b) => b.total - a.total);
 
-  // Share of everything the room has spent, so a total has some context.
-  const shareOfAll = allTotal > 0 ? Math.round((visibleTotal / allTotal) * 100) : 0;
+  const headline = sumWhere(visible, () => true);
+  const headlineGiven = sumWhere(visible, isTransfer);
+  const headlineExpenses = headline - headlineGiven;
+
+  // Share of every rupee paid in the room -- all payments, whatever the
+  // filters -- so a total always reads against the same yardstick.
+  const outOf = sumWhere(payments, () => true);
+  const shareOfAll = outOf > 0 ? Math.round((headline / outOf) * 100) : 0;
+  const shareLabel = 'of all money paid';
+  // Under Transfers every rupee shown was handed to someone, not spent.
+  const verb = kindFilter === 'transfer' ? 'Given' : 'Spent';
   const totalLabel =
-    payerTotals.length === 1
-      ? `Paid by ${displayName(payerTotals[0].participant)}`
-      : payerTotals.length > 1
-        ? `Paid by ${payerTotals.length} people`
+    personTotals.length === 1
+      ? `${verb} by ${displayName(personTotals[0].participant)}`
+      : personTotals.length > 1
+        ? `${verb} by ${personTotals.length} people`
         : 'Filtered total';
 
   // Exports exactly what the list shows, so filters double as an export query.
@@ -189,8 +188,8 @@ export function PaymentHistory({
           <input
             className="input"
             type="search"
-            placeholder="Search payments"
-            aria-label="Search payments by description"
+            placeholder="Search payments or people"
+            aria-label="Search payments by description or person"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -200,7 +199,7 @@ export function PaymentHistory({
         <Menu
           wrapClassName="tb-mobile"
           label="Filter and export"
-          buttonClassName={`btn btn-ghost btn-icon tb-more${involvingIds.length > 0 || panelFilterCount > 0 ? ' has-filter' : ''}`}
+          buttonClassName={`btn btn-ghost btn-icon tb-more${payerIds.length > 0 || panelFilterCount > 0 ? ' has-filter' : ''}`}
           button={<Icon name="more" />}
           menuClassName="menu-filter"
         >
@@ -227,8 +226,8 @@ export function PaymentHistory({
                 onClick={() => setPeopleOpen(!peopleOpen)}
               >
                 <Icon name="users" />
-                <span className="grow">Filter by people</span>
-                {involvingIds.length > 0 && <span className="count">{involvingIds.length}</span>}
+                <span className="grow">Paid by</span>
+                {payerIds.length > 0 && <span className="count">{payerIds.length}</span>}
                 <span className="chev">
                   <Icon name="chevD" />
                 </span>
@@ -237,8 +236,8 @@ export function PaymentHistory({
                 <div className="menu-sub">
                   <PeopleItems
                     participants={participants}
-                    selected={involvingIds}
-                    onToggle={toggleInvolving}
+                    selected={payerIds}
+                    onToggle={togglePayer}
                   />
                 </div>
               )}
@@ -253,7 +252,7 @@ export function PaymentHistory({
                 }}
               >
                 <Icon name="sliders" />
-                <span className="grow">Amount &amp; payer filters</span>
+                <span className="grow">Amount filter</span>
                 {panelFilterCount > 0 && <span className="count">{panelFilterCount}</span>}
                 <span className="chk">{filtersOn && <Icon name="check" />}</span>
               </button>
@@ -284,14 +283,14 @@ export function PaymentHistory({
 
         <Menu
           wrapClassName="tb-desktop"
-          label="Filter by people"
-          buttonClassName={`btn btn-ghost btn-sm tb-desktop people-btn${involvingIds.length > 0 ? ' on' : ''}`}
+          label="Filter by who paid"
+          buttonClassName={`btn btn-ghost btn-sm tb-desktop people-btn${payerIds.length > 0 ? ' on' : ''}`}
           button={
             <>
               <Icon name="users" />
-              {involvingIds.length === 0
+              {payerIds.length === 0
                 ? 'Anyone'
-                : `${involvingIds.length} ${involvingIds.length === 1 ? 'person' : 'people'}`}
+                : `${payerIds.length} ${payerIds.length === 1 ? 'person' : 'people'}`}
               <Icon name="chevD" />
             </>
           }
@@ -299,11 +298,11 @@ export function PaymentHistory({
         >
           {() => (
             <>
-              <div className="menu-l">Payments involving</div>
+              <div className="menu-l">Paid by</div>
               <PeopleItems
                 participants={participants}
-                selected={involvingIds}
-                onToggle={toggleInvolving}
+                selected={payerIds}
+                onToggle={togglePayer}
               />
             </>
           )}
@@ -315,7 +314,7 @@ export function PaymentHistory({
           aria-pressed={filtersOn}
           aria-expanded={filtersOn}
           aria-controls="payment-filter-panel"
-          title={filtersOn ? 'Turn filters off' : 'Filter by amount or payer'}
+          title={filtersOn ? 'Turn filters off' : 'Filter by amount'}
           onClick={() => setFiltersOn((on) => !on)}
         >
           <Icon name="sliders" />
@@ -334,10 +333,10 @@ export function PaymentHistory({
           {isExporting ? 'Exporting…' : 'Export'}
         </button>
 
-        {involvingIds.length > 0 && (
+        {payerIds.length > 0 && (
           <div className="filt-row">
-            <span className="filt-l">Involving</span>
-            {involvingIds.map((id) => {
+            <span className="filt-l">Paid by</span>
+            {payerIds.map((id) => {
               const participant = participants.find((p) => p.id === id)!;
               return (
                 <button
@@ -345,7 +344,7 @@ export function PaymentHistory({
                   type="button"
                   className="filt-chip"
                   aria-label={`Remove ${participant.name} from filter`}
-                  onClick={() => toggleInvolving(id)}
+                  onClick={() => togglePayer(id)}
                 >
                   <Avatar name={participant.name} size="sm" />
                   {participant.name}
@@ -353,8 +352,8 @@ export function PaymentHistory({
                 </button>
               );
             })}
-            {involvingIds.length > 1 && (
-              <button type="button" className="filt-clear" onClick={() => toggleInvolving(null)}>
+            {payerIds.length > 1 && (
+              <button type="button" className="filt-clear" onClick={() => togglePayer(null)}>
                 Clear
               </button>
             )}
@@ -405,23 +404,6 @@ export function PaymentHistory({
               </div>
             </div>
 
-            {participants.length > 1 && (
-              <div className="field">
-                <span className="label">Paid by</span>
-                <div className="chips" role="group" aria-label="Filter payments by who paid">
-                  {participants.map((participant) => (
-                    <label key={participant.id} className="chip">
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(participant.id)}
-                        onChange={() => toggle(participant.id)}
-                      />
-                      <span style={{ paddingLeft: 7 }}>{displayName(participant)}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -432,40 +414,58 @@ export function PaymentHistory({
             <div>
               <div className="label">{totalLabel}</div>
               <div className="num" style={{ fontSize: 22, fontWeight: 600 }}>
-                {formatMoney(visibleTotal)}
+                {formatMoney(headline)}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="num" style={{ fontWeight: 600 }}>
                 {shareOfAll}%
               </div>
-              <div className="hint">of all spending</div>
+              <div className="hint">{shareLabel}</div>
             </div>
           </div>
 
-          <div className="bar" role="img" aria-label={`${shareOfAll}% of all spending`}>
-            <i className="pos" style={{ width: `${shareOfAll}%` }} />
+          <div className="bar" role="img" aria-label={`${shareOfAll}% ${shareLabel}`}>
+            <i className="pos" style={{ width: `${Math.min(shareOfAll, 100)}%` }} />
           </div>
+
+          {headlineExpenses > 0 && headlineGiven > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div className="kv">
+                <span>Paid for expenses</span>
+                <span className="num">{formatMoney(headlineExpenses)}</span>
+              </div>
+              <div className="kv">
+                <span>Given to people</span>
+                <span className={`num${headlineGiven > 0 ? '' : ' muted'}`}>
+                  {formatMoney(headlineGiven)}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="card-h" style={{ margin: '10px 0 0' }}>
             <p className="hint">
-              {visible.length} of {payments.length} {payments.length === 1 ? 'payment' : 'payments'}
-              {` · avg ${formatMoney(visibleTotal / visible.length)}`}
+              {`${visible.length} of ${payments.length} ${payments.length === 1 ? 'payment' : 'payments'}`}
+              {` · avg ${formatMoney(headline / visible.length)}`}
             </p>
             <button type="button" className="btn btn-ghost btn-sm" onClick={resetFilters}>
               Reset all
             </button>
           </div>
 
-          {payerTotals.length > 1 && (
+          {personTotals.length > 1 && (
             <div style={{ marginTop: 10 }}>
-              {payerTotals.map(({ participant, total }) => {
-                const share = visibleTotal > 0 ? (total / visibleTotal) * 100 : 0;
+              {personTotals.map(({ participant, total, expenses, given }) => {
+                const share = headline > 0 ? (total / headline) * 100 : 0;
                 return (
                   <div key={participant.id} style={{ padding: '6px 0' }}>
                     <div className="kv">
                       <span>{displayName(participant)}</span>
                       <span className="num">{formatMoney(total)}</span>
+                    </div>
+                    <div className="hint">
+                      {formatMoney(expenses)} on expenses · {formatMoney(given)} given
                     </div>
                     <div className="bar" aria-hidden="true">
                       <i style={{ width: `${share}%` }} />
@@ -478,7 +478,7 @@ export function PaymentHistory({
         </div>
       )}
 
-      <div className="scroll-area" style={{ marginTop: 6 }}>
+      <div className="scroll-area pay-box">
         {visible.length === 0 ? (
           <div className="empty small" style={{ marginTop: 14 }}>
             <Icon name="search" />
@@ -583,13 +583,23 @@ function dayLabel(date: Date): string {
   });
 }
 
-// Spending only: cash handed between people is not money spent on the trip,
-// so it would inflate every total and share it was added to.
-function sumAmounts(list: Payment[]): number {
-  return list.reduce(
-    (sum, payment) => (isTransfer(payment) ? sum : sum + payment.amount),
-    0,
+// Expenses and Transfers follow the same rule as the balances, not just how a
+// payment was entered: an expense paid for exactly one other person is money
+// handed to them, so it sits under Transfers with the rest of the cash given.
+function matchesKind(payment: Payment, kind: KindFilter): boolean {
+  if (kind === 'all') return true;
+  return isTransfer(payment) === (kind === 'transfer');
+}
+
+// The description, who paid, or anyone in the split (or who received it).
+function matchesSearch(payment: Payment, query: string): boolean {
+  return [payment.description, payment.payer, ...payment.splitAmong].some((text) =>
+    text.toLowerCase().includes(query),
   );
+}
+
+function sumWhere(list: Payment[], keep: (payment: Payment) => boolean): number {
+  return list.reduce((sum, payment) => (keep(payment) ? sum + payment.amount : sum), 0);
 }
 
 function displayName(participant: Participant): string {

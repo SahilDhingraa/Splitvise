@@ -89,24 +89,34 @@ export function PaymentRow({
     return () => observer.disconnect();
   }, [payment, fullNames]);
 
+  // Money given is fully described by its row (who gave whom, and the note is
+  // the title), so only expenses open up to a breakdown.
+  const canExpand = !isGiven;
   const toggle = () => setIsOpen((open) => !open);
   const canAct = payment.canEdit || payment.canDelete;
 
   return (
-    <div className={`pay-item${isOpen ? ' open' : ''}`}>
+    <div className={`pay-item${isOpen && canExpand ? ' open' : ''}`}>
       <div
         className="row act pay"
-        data-click=""
-        role="button"
-        tabIndex={0}
-        aria-expanded={isOpen}
-        onClick={toggle}
-        onKeyDown={(event) => {
-          if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
-            event.preventDefault();
-            toggle();
-          }
-        }}
+        data-click={canExpand ? '' : undefined}
+        role={canExpand ? 'button' : undefined}
+        tabIndex={canExpand ? 0 : undefined}
+        aria-expanded={canExpand ? isOpen : undefined}
+        onClick={canExpand ? toggle : undefined}
+        onKeyDown={
+          canExpand
+            ? (event) => {
+                if (
+                  (event.key === 'Enter' || event.key === ' ') &&
+                  event.target === event.currentTarget
+                ) {
+                  event.preventDefault();
+                  toggle();
+                }
+              }
+            : undefined
+        }
       >
         <div className={`act-ico ${isGiven ? 'transfer' : 'expense'}`}>
           <Icon name={isGiven ? 'arrowR' : 'receipt'} />
@@ -131,6 +141,12 @@ export function PaymentRow({
             <>
               <b>{payment.payer}</b> gave <b>{payment.splitAmong.join(', ')}</b>
             </>
+          ) : count === 1 ? (
+            // One person in the split: "each" would say nothing, so name them.
+            <>
+              <b>{payment.payer}</b> paid for{' '}
+              {payment.splitAmongIds[0] === payment.payerId ? 'themselves' : <b>{names[0]}</b>}
+            </>
           ) : (
             <>
               <b>{payment.payer}</b> paid · <span className="nm-full">{fullNames}</span>
@@ -138,9 +154,11 @@ export function PaymentRow({
               {count > 0 && ` · ${formatMoneyShort(payment.amount / count)} each`}
             </>
           )}
-          <span className="exp">
-            <Icon name="chevD" />
-          </span>
+          {canExpand && (
+            <span className="exp">
+              <Icon name="chevD" />
+            </span>
+          )}
         </div>
 
         <div className="amt">
@@ -197,7 +215,7 @@ export function PaymentRow({
         )}
       </div>
 
-      {isOpen && (
+      {isOpen && canExpand && (
         <PaymentDetail
           payment={payment}
           isRemoving={isRemoving}
@@ -224,8 +242,7 @@ export function PaymentRow({
   );
 }
 
-// The expanded view under a row: who gave what to whom, or what each person in
-// the split owes for it.
+// The expanded view under an expense: what each person in the split owes for it.
 function PaymentDetail({
   payment,
   isRemoving,
@@ -269,33 +286,8 @@ function PaymentDetail({
     </div>
   );
 
-  if (payment.kind === 'transfer') {
-    const recipient = payment.splitAmong[0] ?? 'Someone';
-    return (
-      <div className="pay-detail">
-        {header('Money given')}
-        <div className="pd-row">
-          <Avatar name={payment.payer} size="sm" />
-          <span className="grow">
-            <b>{payment.payer}</b> gave
-          </span>
-          <span className="amt">{formatMoney(payment.amount)}</span>
-        </div>
-        <div className="pd-row">
-          <Avatar name={recipient} size="sm" />
-          <span className="grow">
-            <b>{recipient}</b> received
-          </span>
-          <span className="amt">{formatMoney(payment.amount)}</span>
-        </div>
-        {payment.description && <div className="pd-note">{payment.description}</div>}
-        {acts}
-      </div>
-    );
-  }
-
   const count = payment.splitAmongIds.length;
-  const each = count > 0 ? payment.amount / count : 0;
+  const shares = splitInPaise(payment.amount, count);
   const payerInSplit = payment.splitAmongIds.includes(payment.payerId);
   const paidPill = (
     <span className="pill pill-accent">paid {formatMoneyShort(payment.amount)}</span>
@@ -311,7 +303,7 @@ function PaymentDetail({
             <b>{payment.splitAmong[index]}</b>
             {id === payment.payerId && paidPill}
           </span>
-          <span className="amt">{formatMoney(each)}</span>
+          <span className="amt">{formatMoney(shares[index])}</span>
         </div>
       ))}
       {!payerInSplit && (
@@ -388,4 +380,15 @@ function EditPaymentForm({
       </form>
     </>
   );
+}
+
+// Shares that add up to the payment exactly: ₹100 three ways is 33.34 + 33.33 +
+// 33.33, not 33.33 three times with a paisa missing. The balances keep the
+// exact thirds; this only decides who is shown the odd paisa.
+function splitInPaise(amount: number, count: number): number[] {
+  if (count === 0) return [];
+  const total = Math.round(amount * 100);
+  const base = Math.floor(total / count);
+  const extra = total - base * count;
+  return Array.from({ length: count }, (_, index) => (base + (index < extra ? 1 : 0)) / 100);
 }

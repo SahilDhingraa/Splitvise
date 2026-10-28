@@ -3,7 +3,7 @@
 import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addParticipant, type ActionResult } from '@/app/actions';
-import { ParticipantRow } from './ParticipantRow';
+import { ParticipantRow, type RemovalImpact } from './ParticipantRow';
 import { MergePeopleButton } from './RoomHeader';
 import { Icon } from './Icon';
 import type { Participant, Payment, Room } from '@/lib/types';
@@ -38,13 +38,20 @@ export function ParticipantManager({
     return result;
   }, EMPTY);
 
-  // How many payments each person is tangled up in, so removing them can warn
-  // about what it is really about to delete.
-  function involvedPayments(participantId: string) {
-    return payments.filter(
-      (payment) =>
-        payment.payerId === participantId || payment.splitAmongIds.includes(participantId),
-    ).length;
+  // What removing each person would do to the payments, so the confirm can say
+  // exactly that. Mirrors removeParticipant and the database cascade: payments
+  // they paid are deleted; payments split only with them (including cash given
+  // to them) are deleted; shared payments are re-split among everyone else.
+  function removalImpact(participantId: string): RemovalImpact {
+    const impact = { paid: 0, toThem: 0, reSplit: 0 };
+    for (const payment of payments) {
+      if (payment.payerId === participantId) impact.paid += 1;
+      else if (payment.splitAmongIds.includes(participantId)) {
+        if (payment.splitAmongIds.length === 1) impact.toThem += 1;
+        else impact.reSplit += 1;
+      }
+    }
+    return impact;
   }
 
   return (
@@ -66,7 +73,7 @@ export function ParticipantManager({
             roomId={roomId}
             participant={participant}
             isRoomOwner={participant.userId !== null && participant.userId === room.ownerId}
-            involvedPayments={involvedPayments(participant.id)}
+            removalImpact={removalImpact(participant.id)}
             isOwner={isOwner}
             isLocked={isLocked}
           />

@@ -10,11 +10,29 @@ import { useRoomTabs } from './RoomTabs';
 import { useDialog } from './Dialog';
 import type { Participant } from '@/lib/types';
 
+// What removing someone does to the room's payments (see removalImpact in
+// ParticipantManager, and removeParticipant).
+export type RemovalImpact = { paid: number; toThem: number; reSplit: number };
+
+function removalMessage({ paid, toThem, reSplit }: RemovalImpact): string {
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const parts = [
+    paid > 0 && `Deletes ${n(paid, 'payment', 'payments')} they paid.`,
+    toThem > 0 &&
+      `Deletes ${n(toThem, 'payment', 'payments')} made only for them, including money given to them.`,
+    reSplit > 0 &&
+      `${n(reSplit, 'shared payment', 'shared payments')} will be re-split among everyone else, so their shares go up.`,
+  ].filter(Boolean);
+  return parts.length > 0
+    ? `${parts.join(' ')} This cannot be undone.`
+    : 'They are not part of any payment, so nothing else changes.';
+}
+
 export function ParticipantRow({
   roomId,
   participant,
   isRoomOwner,
-  involvedPayments,
+  removalImpact,
   isOwner,
   isLocked,
 }: {
@@ -22,7 +40,7 @@ export function ParticipantRow({
   participant: Participant;
   // This person owns the room (as opposed to `isOwner`: the viewer does).
   isRoomOwner: boolean;
-  involvedPayments: number;
+  removalImpact: RemovalImpact;
   isOwner: boolean;
   isLocked: boolean;
 }) {
@@ -43,10 +61,7 @@ export function ParticipantRow({
   async function handleRemove() {
     const ok = await confirm({
       title: `Remove ${participant.name}?`,
-      message:
-        involvedPayments > 0
-          ? `This also deletes ${involvedPayments} ${involvedPayments === 1 ? 'payment' : 'payments'} they were part of.`
-          : 'They are not part of any payment, so nothing else changes.',
+      message: removalMessage(removalImpact),
       confirmLabel: 'Remove',
       icon: 'trash',
       danger: true,
@@ -113,7 +128,7 @@ export function ParticipantRow({
                 }}
               >
                 <Icon name="receipt" />
-                Show their payments
+                Show payments they made
               </button>
             )}
             {canRemove && (

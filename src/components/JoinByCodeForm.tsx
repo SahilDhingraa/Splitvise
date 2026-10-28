@@ -1,30 +1,60 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { joinRoomWithCode, type ActionResult } from '@/app/actions';
+import { Icon } from './Icon';
+import { Modal } from './Modal';
 
 const EMPTY: ActionResult = { error: null };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="secondary-btn" disabled={pending}>
-      {pending ? 'Joining…' : 'Join Room'}
+    <button type="submit" className="btn btn-primary" disabled={pending}>
+      <Icon name="key" />
+      {pending ? 'Joining…' : 'Join room'}
     </button>
   );
 }
 
-export function JoinByCodeForm() {
+// A button that opens the "Join a room" dialog. Styled by the caller.
+export function JoinByCodeButton({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" className={className} onClick={() => setIsOpen(true)}>
+        {children}
+      </button>
+      {isOpen && (
+        <Modal onClose={() => setIsOpen(false)}>
+          <JoinByCodeForm onCancel={() => setIsOpen(false)} />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function JoinByCodeForm({ onCancel }: { onCancel: () => void }) {
   const [state, formAction] = useActionState(joinRoomWithCode, EMPTY);
 
   return (
-    <div className="section">
-      <h2>🔑 Join a Room</h2>
+    <>
+      <h3 className="modal-t">Join a room</h3>
+      <p className="modal-p">Paste the code someone sent you, or the whole invite link.</p>
 
-      <form action={formAction}>
-        <div className="form-group">
-          <label htmlFor="inviteCode">Invite code</label>
+      <form action={formAction} className="form">
+        <div className="field">
+          <label className="label" htmlFor="inviteCode">
+            Invite code or link
+          </label>
           <input
             id="inviteCode"
             name="code"
@@ -33,18 +63,23 @@ export function JoinByCodeForm() {
             // The codes are uppercase, so type them that way. The database
             // upper()s the input anyway -- this is just so what you type matches
             // what you were sent.
-            className="code-input"
+            className="input mono"
             autoCapitalize="characters"
+            autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
             required
           />
-          <p className="form-hint left">Paste the code someone sent you, or the whole link.</p>
+          {state.error && <p className="err">{state.error}</p>}
         </div>
 
-        {state.error && <p className="form-error">{state.error}</p>}
-        <SubmitButton />
+        <div className="modal-acts">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <SubmitButton />
+        </div>
       </form>
-    </div>
+    </>
   );
 }

@@ -1,9 +1,25 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Bricolage_Grotesque, IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
 import { ServiceWorker } from '@/components/ServiceWorker';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+// Display face for headings and figures, Plex for body copy, Plex Mono for every
+// amount so columns of money line up.
+const display = Bricolage_Grotesque({
+  subsets: ['latin'],
+  axes: ['opsz'],
+  variable: '--font-bricolage',
+});
+const body = IBM_Plex_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-plex-sans',
+});
+const mono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-plex-mono',
+});
 
 // The favicon and Apple touch icon are picked up automatically from
 // src/app/icon.png and src/app/apple-icon.png -- no <link> tags needed.
@@ -32,8 +48,8 @@ export const viewport: Viewport = {
   // important sits under either.
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
+    { media: '(prefers-color-scheme: light)', color: '#111926' },
+    { media: '(prefers-color-scheme: dark)', color: '#090D13' },
   ],
 };
 
@@ -56,9 +72,8 @@ const themeScript = `
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>

@@ -1,10 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { PaymentRow } from './PaymentRow';
+import { Avatar } from './Avatar';
+import { Menu } from './Menu';
+import { useRoomTabs, type PaymentsRequest } from './RoomTabs';
+import { Icon } from './Icon';
+import { useDialog } from './Dialog';
 import { isTransfer } from '@/lib/balances';
 import { formatMoney } from '@/lib/money';
 import type { Participant, Payment } from '@/lib/types';
+
+type KindFilter = 'all' | 'expense' | 'transfer';
+
+const noop = () => () => {};
 
 export function PaymentHistory({
   roomId,
@@ -17,10 +26,53 @@ export function PaymentHistory({
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+  const { alert, dialog } = useDialog();
 
-  // The funnel button beside the heading shows and hides the filter controls.
-  // While hidden, no filter applies, but what was typed or picked is kept, so
-  // turning filters back on restores the same view.
+  // Day headings are in the viewer's timezone, which the server cannot know, so
+  // the list is grouped only once it is running in the browser.
+  const isClient = useSyncExternalStore(
+    noop,
+    () => true,
+    () => false,
+  );
+
+  // Search and the expense/transfer switch sit in the toolbar and always apply.
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+
+  // "Involving" sits in the toolbar too (a dropdown on desktop, inside the ⋯
+  // menu on a phone): payments where the person paid, was in the split, or
+  // received the money. Unlike "Paid by" below, it always applies.
+  const [involving, setInvolving] = useState<string[]>([]);
+  const involvingIds = involving.filter((id) => participants.some((p) => p.id === id));
+  // The people list inside the phone ⋯ menu starts expanded when someone is
+  // already picked, until it is opened or closed by hand.
+  const [peopleOpenChoice, setPeopleOpen] = useState<boolean | null>(null);
+  const peopleOpen = peopleOpenChoice ?? involvingIds.length > 0;
+
+  // "Show their payments" on the People tab lands here with that one person
+  // picked and the other toolbar filters cleared.
+  const tabs = useRoomTabs();
+  const [seenRequest, setSeenRequest] = useState<PaymentsRequest | null>(tabs?.request ?? null);
+  if (tabs && tabs.request !== seenRequest) {
+    setSeenRequest(tabs.request);
+    if (tabs.request) {
+      setInvolving([tabs.request.participantId]);
+      setSearch('');
+      setKindFilter('all');
+    }
+  }
+
+  function toggleInvolving(id: string | null) {
+    setInvolving((current) =>
+      id === null ? [] : current.includes(id) ? current.filter((other) => other !== id) : [...current, id],
+    );
+  }
+
+  // The Filters button shows and hides the amount and payer filters. While
+  // hidden, they do not apply, but what was typed or picked is kept, so turning
+  // filters back on restores the same view.
   const [filtersOn, setFiltersOn] = useState(false);
 
   // Drop selections for people who are no longer in the room (removed or
@@ -28,9 +80,6 @@ export function PaymentHistory({
   const activeIds = filtersOn
     ? selected.filter((id) => participants.some((p) => p.id === id))
     : [];
-
-  const [search, setSearch] = useState('');
-  const query = filtersOn ? search.trim().toLowerCase() : '';
 
   // Kept as the raw text so a half-typed value ("12.") stays in the box. An
   // empty or non-numeric bound means "no limit on that side".
@@ -42,10 +91,13 @@ export function PaymentHistory({
   // All filters apply together. The person filter is on who paid: matching on
   // the split too would be near-useless, since most payments are split among
   // everyone, so every person would match them all. Amount bounds are
-  // inclusive, so "min 50" keeps a $50.00 payment.
+  // inclusive, so "min 50" keeps a ₹50.00 payment.
   const visible = payments.filter(
     (payment) =>
+      (kindFilter === 'all' || payment.kind === kindFilter) &&
       (activeIds.length === 0 || activeIds.includes(payment.payerId)) &&
+      (involvingIds.length === 0 ||
+        involvingIds.some((id) => payment.payerId === id || payment.splitAmongIds.includes(id))) &&
       (query === '' || payment.description.toLowerCase().includes(query)) &&
       (min === null || payment.amount >= min) &&
       (max === null || payment.amount <= max),
@@ -57,22 +109,29 @@ export function PaymentHistory({
     );
   }
 
-  const isFiltering = activeIds.length > 0 || query !== '' || min !== null || max !== null;
+  const isFiltering =
+    kindFilter !== 'all' ||
+    activeIds.length > 0 ||
+    involvingIds.length > 0 ||
+    query !== '' ||
+    min !== null ||
+    max !== null;
 
-  // How many of the three filters (person, search, amount) are set, for the
-  // badge on the Filters button.
-  const activeFilterCount =
-    (activeIds.length > 0 ? 1 : 0) + (query !== '' ? 1 : 0) + (min !== null || max !== null ? 1 : 0);
+  // How many of the panel's filters (person, amount) are set, for the badge on
+  // the Filters button.
+  const panelFilterCount = (activeIds.length > 0 ? 1 : 0) + (min !== null || max !== null ? 1 : 0);
 
   function resetFilters() {
     setSelected([]);
+    setInvolving([]);
     setSearch('');
     setMinText('');
     setMaxText('');
+    setKindFilter('all');
   }
 
   // Totals respect every filter, so "Alice" + "min 50" sums only Alice's
-  // payments of $50 or more. With several payers picked, each gets their own
+  // payments of ₹50 or more. With several payers picked, each gets their own
   // subtotal alongside the combined figure.
   const visibleTotal = sumAmounts(visible);
   const allTotal = sumAmounts(payments);
@@ -101,94 +160,221 @@ export function PaymentHistory({
       const { exportPaymentsToExcel } = await import('@/lib/exportPayments');
       await exportPaymentsToExcel(visible);
     } catch {
-      window.alert('Could not create the Excel file. Please try again.');
+      await alert({
+        title: 'Export failed',
+        message: 'Could not create the Excel file. Please try again.',
+      });
     } finally {
       setIsExporting(false);
     }
   }
 
-  return (
-    <div className="section payment-history-section">
-      {/* Title on the left, actions on the right; on a phone the actions drop
-          to their own row and split it evenly. */}
-      <div className="history-header">
-        <h2>
-          📜 Payment History{' '}
-          <span className="section-count">
-            {isFiltering ? `${visible.length} of ${payments.length}` : payments.length}
-          </span>
-        </h2>
-        <div className="history-actions">
-          {payments.length > 0 && (
-            <button
-              type="button"
-              className={`history-action filter-toggle${filtersOn ? ' active' : ''}`}
-              aria-pressed={filtersOn}
-              aria-expanded={filtersOn}
-              aria-controls="payment-filter-panel"
-              title={filtersOn ? 'Turn filters off' : 'Filter payments'}
-              onClick={() => setFiltersOn((on) => !on)}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 5h16M7 12h10M10 19h4" />
-              </svg>
-              Filters
-              {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
-            </button>
-          )}
-          {visible.length > 0 && (
-            <button
-              type="button"
-              className="history-action"
-              onClick={handleExport}
-              disabled={isExporting}
-              title={isFiltering ? 'Export the filtered payments' : 'Export all payments'}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
-              </svg>
-              {isExporting ? 'Exporting…' : 'Export Excel'}
-            </button>
-          )}
-        </div>
+  if (payments.length === 0) {
+    return (
+      <div className="empty">
+        <h3>Nothing recorded yet</h3>
+        <p style={{ marginBottom: 0 }}>
+          Add the first expense and the balances will work themselves out.
+        </p>
       </div>
+    );
+  }
 
-      {filtersOn && payments.length > 0 && (
-        <div className="filter-panel" id="payment-filter-panel">
-          <div className="filter-panel-head">
-            <span>Filter payments</span>
-            {activeFilterCount > 0 && (
-              <button type="button" className="filter-reset" onClick={resetFilters}>
-                Reset all
+  return (
+    <>
+      {dialog}
+      <div className="toolbar">
+        <div className="search">
+          <Icon name="search" />
+          <input
+            className="input"
+            type="search"
+            placeholder="Search payments"
+            aria-label="Search payments by description"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+
+        {/* Phones: filters and export fold into one ⋯ menu beside the search. */}
+        <Menu
+          wrapClassName="tb-mobile"
+          label="Filter and export"
+          buttonClassName={`btn btn-ghost btn-icon tb-more${involvingIds.length > 0 || panelFilterCount > 0 ? ' has-filter' : ''}`}
+          button={<Icon name="more" />}
+          menuClassName="menu-filter"
+        >
+          {(close) => (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={isExporting || visible.length === 0}
+                onClick={() => {
+                  close();
+                  handleExport();
+                }}
+              >
+                <Icon name="download" />
+                <span className="grow">{isExporting ? 'Exporting…' : 'Export spreadsheet'}</span>
+              </button>
+              <div className="menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className={`dd${peopleOpen ? ' open' : ''}`}
+                aria-expanded={peopleOpen}
+                onClick={() => setPeopleOpen(!peopleOpen)}
+              >
+                <Icon name="users" />
+                <span className="grow">Filter by people</span>
+                {involvingIds.length > 0 && <span className="count">{involvingIds.length}</span>}
+                <span className="chev">
+                  <Icon name="chevD" />
+                </span>
+              </button>
+              {peopleOpen && (
+                <div className="menu-sub">
+                  <PeopleItems
+                    participants={participants}
+                    selected={involvingIds}
+                    onToggle={toggleInvolving}
+                  />
+                </div>
+              )}
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={filtersOn}
+                className={filtersOn ? 'on' : ''}
+                onClick={() => {
+                  close();
+                  setFiltersOn((on) => !on);
+                }}
+              >
+                <Icon name="sliders" />
+                <span className="grow">Amount &amp; payer filters</span>
+                {panelFilterCount > 0 && <span className="count">{panelFilterCount}</span>}
+                <span className="chk">{filtersOn && <Icon name="check" />}</span>
+              </button>
+            </>
+          )}
+        </Menu>
+
+        <div className="seg seg-sm" role="radiogroup" aria-label="Payment type">
+          {(
+            [
+              ['all', 'All'],
+              ['expense', 'Expenses'],
+              ['transfer', 'Transfers'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={kindFilter === value}
+              className={kindFilter === value ? 'on' : ''}
+              onClick={() => setKindFilter(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <Menu
+          wrapClassName="tb-desktop"
+          label="Filter by people"
+          buttonClassName={`btn btn-ghost btn-sm tb-desktop people-btn${involvingIds.length > 0 ? ' on' : ''}`}
+          button={
+            <>
+              <Icon name="users" />
+              {involvingIds.length === 0
+                ? 'Anyone'
+                : `${involvingIds.length} ${involvingIds.length === 1 ? 'person' : 'people'}`}
+              <Icon name="chevD" />
+            </>
+          }
+          menuClassName="menu-filter"
+        >
+          {() => (
+            <>
+              <div className="menu-l">Payments involving</div>
+              <PeopleItems
+                participants={participants}
+                selected={involvingIds}
+                onToggle={toggleInvolving}
+              />
+            </>
+          )}
+        </Menu>
+
+        <button
+          type="button"
+          className={`btn btn-sm tb-desktop ${filtersOn ? 'btn-soft' : 'btn-ghost'}`}
+          aria-pressed={filtersOn}
+          aria-expanded={filtersOn}
+          aria-controls="payment-filter-panel"
+          title={filtersOn ? 'Turn filters off' : 'Filter by amount or payer'}
+          onClick={() => setFiltersOn((on) => !on)}
+        >
+          <Icon name="sliders" />
+          Filters
+          {panelFilterCount > 0 && <span className="count">{panelFilterCount}</span>}
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm tb-desktop"
+          onClick={handleExport}
+          disabled={isExporting || visible.length === 0}
+          title={isFiltering ? 'Export the filtered payments to Excel' : 'Export all payments to Excel'}
+        >
+          <Icon name="download" />
+          {isExporting ? 'Exporting…' : 'Export'}
+        </button>
+
+        {involvingIds.length > 0 && (
+          <div className="filt-row">
+            <span className="filt-l">Involving</span>
+            {involvingIds.map((id) => {
+              const participant = participants.find((p) => p.id === id)!;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className="filt-chip"
+                  aria-label={`Remove ${participant.name} from filter`}
+                  onClick={() => toggleInvolving(id)}
+                >
+                  <Avatar name={participant.name} size="sm" />
+                  {participant.name}
+                  <Icon name="x" />
+                </button>
+              );
+            })}
+            {involvingIds.length > 1 && (
+              <button type="button" className="filt-clear" onClick={() => toggleInvolving(null)}>
+                Clear
               </button>
             )}
           </div>
+        )}
+      </div>
 
-          {/* Search and amount range share a row; they stack on a phone. */}
-          <div className="filter-fields">
-            <div className="filter-field">
-              <span className="filter-field-label">Description</span>
-              <div className="filter-input">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m20 20-3.5-3.5" />
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search payments…"
-                  aria-label="Search payments by description"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="filter-field">
-              <span className="filter-field-label">Amount</span>
-              <div className="amount-range">
-                <div className="filter-input">
-                  <span className="filter-input-prefix" aria-hidden="true">₹</span>
+      {filtersOn && (
+        <div className="card" id="payment-filter-panel" style={{ marginTop: 10, padding: 16 }}>
+          <div className="form">
+            <div className="field">
+              <span className="label">Amount</span>
+              <div className="two">
+                <div className="amount-wrap">
+                  <span className="cur" aria-hidden="true" style={{ fontSize: 14 }}>
+                    ₹
+                  </span>
                   <input
+                    className="input"
+                    style={{ paddingLeft: 30 }}
                     type="number"
                     inputMode="decimal"
                     min="0"
@@ -199,10 +385,13 @@ export function PaymentHistory({
                     onChange={(event) => setMinText(event.target.value)}
                   />
                 </div>
-                <span className="amount-range-sep" aria-hidden="true">–</span>
-                <div className="filter-input">
-                  <span className="filter-input-prefix" aria-hidden="true">₹</span>
+                <div className="amount-wrap">
+                  <span className="cur" aria-hidden="true" style={{ fontSize: 14 }}>
+                    ₹
+                  </span>
                   <input
+                    className="input"
+                    style={{ paddingLeft: 30 }}
                     type="number"
                     inputMode="decimal"
                     min="0"
@@ -215,84 +404,103 @@ export function PaymentHistory({
                 </div>
               </div>
             </div>
-          </div>
 
-          {participants.length > 1 && (
-            <div className="filter-field">
-              <span className="filter-field-label">Paid by</span>
-              <div className="person-filter" role="group" aria-label="Filter payments by who paid">
-                {participants.map((participant) => {
-                  const isOn = selected.includes(participant.id);
-                  return (
-                    <button
-                      key={participant.id}
-                      type="button"
-                      className={`filter-chip${isOn ? ' active' : ''}`}
-                      aria-pressed={isOn}
-                      onClick={() => toggle(participant.id)}
-                    >
-                      {displayName(participant)}
-                    </button>
-                  );
-                })}
+            {participants.length > 1 && (
+              <div className="field">
+                <span className="label">Paid by</span>
+                <div className="chips" role="group" aria-label="Filter payments by who paid">
+                  {participants.map((participant) => (
+                    <label key={participant.id} className="chip">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(participant.id)}
+                        onChange={() => toggle(participant.id)}
+                      />
+                      <span style={{ paddingLeft: 7 }}>{displayName(participant)}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
       {isFiltering && visible.length > 0 && (
-        <div className="filter-total" aria-live="polite">
-          <div className="filter-total-head">
+        <div className="card" aria-live="polite" style={{ marginTop: 12, padding: 16 }}>
+          <div className="card-h" style={{ marginBottom: 6 }}>
             <div>
-              <p className="filter-total-label">{totalLabel}</p>
-              <p className="filter-total-amount">{formatMoney(visibleTotal)}</p>
+              <div className="label">{totalLabel}</div>
+              <div className="num" style={{ fontSize: 22, fontWeight: 600 }}>
+                {formatMoney(visibleTotal)}
+              </div>
             </div>
-            <div className="filter-total-meta">
-              <span className="filter-total-share">{shareOfAll}%</span>
-              <span>of all spending</span>
+            <div style={{ textAlign: 'right' }}>
+              <div className="num" style={{ fontWeight: 600 }}>
+                {shareOfAll}%
+              </div>
+              <div className="hint">of all spending</div>
             </div>
           </div>
 
-          <div
-            className="share-bar"
-            role="img"
-            aria-label={`${shareOfAll}% of all spending`}
-          >
-            <span style={{ width: `${shareOfAll}%` }} />
+          <div className="bar" role="img" aria-label={`${shareOfAll}% of all spending`}>
+            <i className="pos" style={{ width: `${shareOfAll}%` }} />
           </div>
 
-          <p className="filter-total-count">
-            {visible.length} of {payments.length} {payments.length === 1 ? 'payment' : 'payments'}
-            {visible.length > 0 && ` · avg ${formatMoney(visibleTotal / visible.length)}`}
-          </p>
+          <div className="card-h" style={{ margin: '10px 0 0' }}>
+            <p className="hint">
+              {visible.length} of {payments.length} {payments.length === 1 ? 'payment' : 'payments'}
+              {` · avg ${formatMoney(visibleTotal / visible.length)}`}
+            </p>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={resetFilters}>
+              Reset all
+            </button>
+          </div>
 
           {payerTotals.length > 1 && (
-            <ul className="filter-total-breakdown">
+            <div style={{ marginTop: 10 }}>
               {payerTotals.map(({ participant, total }) => {
                 const share = visibleTotal > 0 ? (total / visibleTotal) * 100 : 0;
                 return (
-                  <li key={participant.id}>
-                    <div className="breakdown-row">
-                      <span className="breakdown-name">{displayName(participant)}</span>
-                      <span className="breakdown-amount">{formatMoney(total)}</span>
+                  <div key={participant.id} style={{ padding: '6px 0' }}>
+                    <div className="kv">
+                      <span>{displayName(participant)}</span>
+                      <span className="num">{formatMoney(total)}</span>
                     </div>
-                    <div className="share-bar thin" aria-hidden="true">
-                      <span style={{ width: `${share}%` }} />
+                    <div className="bar" aria-hidden="true">
+                      <i style={{ width: `${share}%` }} />
                     </div>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           )}
         </div>
       )}
 
-      <ul className="payment-list">
-        {payments.length === 0 ? (
-          <li className="empty-state">No payments recorded yet.</li>
-        ) : visible.length === 0 ? (
-          <li className="empty-state">No payments match these filters.</li>
+      <div className="scroll-area" style={{ marginTop: 6 }}>
+        {visible.length === 0 ? (
+          <div className="empty small" style={{ marginTop: 14 }}>
+            <Icon name="search" />
+            No payments match these filters.
+            <button type="button" className="btn btn-ghost btn-sm" onClick={resetFilters}>
+              Reset
+            </button>
+          </div>
+        ) : isClient ? (
+          groupByDay(visible).map((group) => (
+            <div key={group.label}>
+              <div className="date-h">{group.label}</div>
+              {group.payments.map((payment) => (
+                <PaymentRow
+                  key={payment.id}
+                  roomId={roomId}
+                  payment={payment}
+                  participants={participants}
+                />
+              ))}
+            </div>
+          ))
         ) : (
           visible.map((payment) => (
             <PaymentRow
@@ -303,9 +511,76 @@ export function PaymentHistory({
             />
           ))
         )}
-      </ul>
-    </div>
+      </div>
+    </>
   );
+}
+
+// "Anyone" plus a checkable row per person. Picking anyone clears the rest.
+function PeopleItems({
+  participants,
+  selected,
+  onToggle,
+}: {
+  participants: Participant[];
+  selected: string[];
+  onToggle: (id: string | null) => void;
+}) {
+  const item = (id: string | null, label: string, on: boolean, avatar?: React.ReactNode) => (
+    <button
+      key={id ?? ''}
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={on}
+      className={on ? 'on' : ''}
+      onClick={() => onToggle(id)}
+    >
+      {avatar}
+      <span className="grow">{label}</span>
+      <span className="chk">{on && <Icon name="check" />}</span>
+    </button>
+  );
+
+  return (
+    <>
+      {item(null, 'Anyone', selected.length === 0)}
+      {participants.map((participant) =>
+        item(
+          participant.id,
+          displayName(participant),
+          selected.includes(participant.id),
+          <Avatar name={participant.name} size="sm" />,
+        ),
+      )}
+    </>
+  );
+}
+
+// Consecutive payments under "Today", "Yesterday" or a date. The list arrives
+// newest first, so each day's payments are already together.
+function groupByDay(payments: Payment[]): { label: string; payments: Payment[] }[] {
+  const groups: { label: string; payments: Payment[] }[] = [];
+  for (const payment of payments) {
+    const label = dayLabel(new Date(payment.createdAt));
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.payments.push(payment);
+    else groups.push({ label, payments: [payment] });
+  }
+  return groups;
+}
+
+function dayLabel(date: Date): string {
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
+  });
 }
 
 // Spending only: cash handed between people is not money spent on the trip,

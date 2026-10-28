@@ -10,20 +10,21 @@ function Buttons() {
   const { pending } = useFormStatus();
 
   return (
-    <div className="auth-buttons">
-      <button type="submit" disabled={pending}>
+    <>
+      <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? 'Working…' : 'Sign in'}
       </button>
+      <div className="or">or</div>
       <button
         type="submit"
         name="intent"
         value="signup"
-        className="secondary-btn"
+        className="btn btn-ghost btn-block"
         disabled={pending}
       >
         Create account
       </button>
-    </div>
+    </>
   );
 }
 
@@ -45,13 +46,16 @@ export function LoginForm({ next }: { next: string }) {
   );
 
   return (
-    <form action={formAction}>
+    <form action={formAction} className="form">
       <input type="hidden" name="next" value={next} />
 
-      <div className="form-group">
-        <label htmlFor="displayName">Display name</label>
+      <div className="field">
+        <label className="label" htmlFor="displayName">
+          Display name <span className="opt">new accounts only</span>
+        </label>
         <input
           id="displayName"
+          className="input"
           name="displayName"
           type="text"
           placeholder="Only used when creating an account"
@@ -61,10 +65,13 @@ export function LoginForm({ next }: { next: string }) {
         />
       </div>
 
-      <div className="form-group">
-        <label htmlFor="email">Email</label>
+      <div className="field">
+        <label className="label" htmlFor="email">
+          Email
+        </label>
         <input
           id="email"
+          className="input"
           name="email"
           type="email"
           placeholder="test@example.com"
@@ -75,10 +82,13 @@ export function LoginForm({ next }: { next: string }) {
         />
       </div>
 
-      <div className="form-group">
-        <label htmlFor="password">Password</label>
+      <div className="field">
+        <label className="label" htmlFor="password">
+          Password
+        </label>
         <input
           id="password"
+          className="input"
           name="password"
           type="password"
           placeholder="********"
@@ -89,8 +99,8 @@ export function LoginForm({ next }: { next: string }) {
         />
       </div>
 
-      {state.error && <p className="form-error">{state.error}</p>}
-      {state.message && <p className="form-message">{state.message}</p>}
+      {state.error && <p className="err">{state.error}</p>}
+      {state.message && <p className="ok-msg">{state.message}</p>}
 
       <Buttons />
     </form>

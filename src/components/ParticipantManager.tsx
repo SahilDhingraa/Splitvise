@@ -4,33 +4,33 @@ import { useActionState, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { addParticipant, type ActionResult } from '@/app/actions';
 import { ParticipantRow } from './ParticipantRow';
-import type { Participant, Payment } from '@/lib/types';
+import { MergePeopleButton } from './RoomHeader';
+import { Icon } from './Icon';
+import type { Participant, Payment, Room } from '@/lib/types';
 
 const EMPTY: ActionResult = { error: null };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending}>
-      {pending ? 'Adding…' : 'Add Person'}
+    <button type="submit" className="btn btn-primary" disabled={pending}>
+      <Icon name="plus" />
+      {pending ? 'Adding…' : 'Add person'}
     </button>
   );
 }
 
 export function ParticipantManager({
-  roomId,
+  room,
   participants,
   payments,
-  isOwner,
-  isLocked,
 }: {
-  roomId: string;
+  room: Room;
   participants: Participant[];
   payments: Payment[];
-  isOwner: boolean;
-  isLocked: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const { id: roomId, isOwner, isLocked } = room;
 
   const [state, formAction] = useActionState(async (prev: ActionResult, formData: FormData) => {
     const result = await addParticipant(roomId, prev, formData);
@@ -48,52 +48,88 @@ export function ParticipantManager({
   }
 
   return (
-    <div className="section">
-      <h2>
-        👥 People <span className="section-count">{participants.length}</span>
-      </h2>
+    <div className="stack">
+      <div className="card">
+        <div className="card-h">
+          <div className="card-t">
+            <Icon name="users" />
+            People <span className="count">{participants.length}</span>
+          </div>
+          {isOwner && (
+            <MergePeopleButton room={room} participants={participants} payments={payments} />
+          )}
+        </div>
 
-      <ul className="user-list">
         {participants.map((participant) => (
           <ParticipantRow
             key={participant.id}
             roomId={roomId}
             participant={participant}
+            isRoomOwner={participant.userId !== null && participant.userId === room.ownerId}
             involvedPayments={involvedPayments(participant.id)}
             isOwner={isOwner}
             isLocked={isLocked}
           />
         ))}
-      </ul>
+      </div>
 
-      {isLocked ? (
-        <p className="form-hint left">
-          🔒 This room is locked. The list of people is frozen until the room owner unlocks it.
-        </p>
-      ) : isOwner ? (
-        <form action={formAction} ref={formRef} className="add-person-form">
-          <div className="form-group">
-            <label htmlFor="participantName">Add someone without an account</label>
-            <input id="participantName" name="name" type="text" placeholder="Name" required />
+      <div className="card">
+        <div className="card-h">
+          <div className="card-t">
+            <Icon name="plus" />
+            Add someone without an account
           </div>
+        </div>
 
-          <div className="form-group">
-            <label htmlFor="participantEmail">Their email (optional)</label>
-            <input id="participantEmail" name="email" type="email" placeholder="name@example.com" />
-            <p className="form-hint left">
+        {isLocked ? (
+          <div className="empty small">
+            <Icon name="lock" />
+            This room is locked. The list of people is frozen until the room owner unlocks it.
+          </div>
+        ) : isOwner ? (
+          <form action={formAction} ref={formRef} className="form">
+            <div className="two">
+              <div className="field">
+                <label className="label" htmlFor="participantName">
+                  Name
+                </label>
+                <input
+                  id="participantName"
+                  name="name"
+                  type="text"
+                  className="input"
+                  maxLength={40}
+                  placeholder="e.g. Chaitnya"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="participantEmail">
+                  Email <span className="opt">optional</span>
+                </label>
+                <input
+                  id="participantEmail"
+                  name="email"
+                  type="email"
+                  className="input"
+                  placeholder="name@example.com"
+                />
+              </div>
+            </div>
+            <p className="hint">
               If you add an email, that person takes over this entry — and everything already
               recorded against it — as soon as they sign up or join.
             </p>
-          </div>
 
-          {state.error && <p className="form-error">{state.error}</p>}
-          <SubmitButton />
-        </form>
-      ) : (
-        <p className="form-hint left">
-          Only the room owner can add or remove people. You can rename yourself.
-        </p>
-      )}
+            {state.error && <p className="err">{state.error}</p>}
+            <div className="form-acts">
+              <SubmitButton />
+            </div>
+          </form>
+        ) : (
+          <p className="hint">Only the room owner can add or remove people. You can rename yourself.</p>
+        )}
+      </div>
     </div>
   );
 }

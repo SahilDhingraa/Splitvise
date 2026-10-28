@@ -1,24 +1,13 @@
 import Image from 'next/image';
 
-// The site header. `alt` is intentionally empty: the word "SplitVise" sits right
-// beside the logo, so announcing it again would just make a screen reader say the
-// name twice.
-export function Brand({ children }: { children?: React.ReactNode }) {
+// The logo and wordmark. `alt` is intentionally empty: the word "SplitVise" sits
+// right beside the logo, so announcing it again would just make a screen reader
+// say the name twice.
+export function Brand() {
   return (
-    <div className="header">
-      <h1 className="brand">
-        <Image
-          src="/logo.png"
-          alt=""
-          width={400}
-          height={432}
-          className="brand-logo"
-          priority
-        />
-        SplitVise
-      </h1>
-      <p>Smart expense splitting made simple</p>
-      {children}
+    <div className="brand">
+      <Image src="/logo.png" alt="" width={400} height={432} className="mark" priority />
+      <span className="wordmark">SplitVise</span>
     </div>
   );
 }

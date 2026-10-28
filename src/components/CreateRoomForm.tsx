@@ -1,49 +1,85 @@
 'use client';
 
-import { useActionState, useRef } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { createRoom, type ActionResult } from '@/app/actions';
+import { Icon } from './Icon';
+import { Modal } from './Modal';
 
 const EMPTY: ActionResult = { error: null };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending}>
-      {pending ? 'Creating…' : 'Create Room'}
+    <button type="submit" className="btn btn-primary" disabled={pending}>
+      <Icon name="plus" />
+      {pending ? 'Creating…' : 'Create room'}
     </button>
   );
 }
 
-export function CreateRoomForm() {
-  const formRef = useRef<HTMLFormElement>(null);
-
-  const [state, formAction] = useActionState(async (prev: ActionResult, formData: FormData) => {
-    const result = await createRoom(prev, formData);
-    // On success createRoom redirects into the new room, so this only runs on failure.
-    if (!result.error) formRef.current?.reset();
-    return result;
-  }, EMPTY);
+// A button that opens the "New room" dialog. Styled by the caller, since it
+// appears both as a rail item and as a page button.
+export function CreateRoomButton({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="section">
-      <h2>➕ New Room</h2>
+    <>
+      <button type="button" className={className} onClick={() => setIsOpen(true)}>
+        {children}
+      </button>
+      {isOpen && (
+        <Modal onClose={() => setIsOpen(false)}>
+          <CreateRoomForm onCancel={() => setIsOpen(false)} />
+        </Modal>
+      )}
+    </>
+  );
+}
 
-      <form action={formAction} ref={formRef}>
-        <div className="form-group">
-          <label htmlFor="roomName">Room name</label>
+function CreateRoomForm({ onCancel }: { onCancel: () => void }) {
+  // On success createRoom redirects into the new room, so the state only ever
+  // carries an error.
+  const [state, formAction] = useActionState(createRoom, EMPTY);
+
+  return (
+    <>
+      <h3 className="modal-t">New room</h3>
+      <p className="modal-p">
+        One room per trip, flat or dinner. You can invite people after it&apos;s made.
+      </p>
+
+      <form action={formAction} className="form">
+        <div className="field">
+          <label className="label" htmlFor="roomName">
+            Room name
+          </label>
           <input
             id="roomName"
             name="name"
             type="text"
+            className="input"
+            maxLength={40}
             placeholder="Europe trip, Imagica, Flat rent…"
             required
           />
         </div>
 
-        {state.error && <p className="form-error">{state.error}</p>}
-        <SubmitButton />
+        {state.error && <p className="err">{state.error}</p>}
+
+        <div className="modal-acts">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <SubmitButton />
+        </div>
       </form>
-    </div>
+    </>
   );
 }

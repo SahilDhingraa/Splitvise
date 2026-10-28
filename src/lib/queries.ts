@@ -184,3 +184,89 @@ export async function getRoomPreview(code: string): Promise<string | null> {
   if (error) throw new Error(error.message);
   return data?.[0]?.name ?? null;
 }
+
+// Per-room figures for the home page: what each room has spent, where you stand
+// in it, who is in it, and when anything last happened. Two queries for every
+// room at once, rather than one per room -- RLS already limits both to rooms you
+// are in.
+export async function getRoomSummaries(): Promise<Map<string, RoomSummary>> {
+  const supabase = await createClient();
+  const userId = await getCurrentUserId();
+
+  const [participantsResult, paymentsResult] = await Promise.all([
+    supabase
+      .from('participants')
+      .select('id, room_id, user_id, name')
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('payments')
+      .select('room_id, kind, amount, payer_id, created_at, payment_splits ( participant_id )'),
+  ]);
+
+  if (participantsResult.error) throw new Error(participantsResult.error.message);
+  if (paymentsResult.error) throw new Error(paymentsResult.error.message);
+
+  const summaries = new Map<string, RoomSummary>();
+  const myParticipant = new Map<string, string>();
+  const nets = new Map<string, number>();
+
+  const summary = (roomId: string): RoomSummary => {
+    let found = summaries.get(roomId);
+    if (!found) {
+      found = { totalSpent: 0, yourBalance: 0, paymentCount: 0, lastActivity: null, members: [] };
+      summaries.set(roomId, found);
+    }
+    return found;
+  };
+
+  for (const row of participantsResult.data ?? []) {
+    summary(row.room_id).members.push(row.name);
+    if (row.user_id !== null && row.user_id === userId) myParticipant.set(row.room_id, row.id);
+  }
+
+  type Row = {
+    room_id: string;
+    kind: PaymentKind;
+    amount: string | number;
+    payer_id: string;
+    created_at: string;
+    payment_splits: { participant_id: string }[];
+  };
+
+  for (const row of (paymentsResult.data ?? []) as unknown as Row[]) {
+    const entry = summary(row.room_id);
+    const amount = Number(row.amount);
+    const splitIds = row.payment_splits.map((split) => split.participant_id);
+
+    entry.paymentCount += 1;
+    if (!entry.lastActivity || row.created_at > entry.lastActivity) {
+      entry.lastActivity = row.created_at;
+    }
+
+    // Same rules as lib/balances: a payment split among nobody is ignored, and
+    // cash handed to one other person is not spending.
+    if (splitIds.length === 0) continue;
+    const transfer =
+      row.kind === 'transfer' || (splitIds.length === 1 && splitIds[0] !== row.payer_id);
+    if (!transfer) entry.totalSpent += amount;
+
+    const share = amount / splitIds.length;
+    nets.set(row.payer_id, (nets.get(row.payer_id) ?? 0) + amount);
+    splitIds.forEach((id) => nets.set(id, (nets.get(id) ?? 0) - share));
+  }
+
+  myParticipant.forEach((participantId, roomId) => {
+    summary(roomId).yourBalance = nets.get(participantId) ?? 0;
+  });
+
+  return summaries;
+}
+
+export type RoomSummary = {
+  totalSpent: number;
+  // Positive: the room owes you. Negative: you owe the room.
+  yourBalance: number;
+  paymentCount: number;
+  lastActivity: string | null;
+  members: string[];
+};

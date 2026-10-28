@@ -1,6 +1,5 @@
 import { LoginForm } from '@/components/LoginForm';
 import { Brand } from '@/components/Brand';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default async function LoginPage({
   searchParams,
@@ -10,16 +9,15 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <div className="container">
-      <ThemeToggle />
-
-      <Brand />
-
-      <div className="auth-shell">
-        <div className="section">
-          <h2>Sign in</h2>
-          <LoginForm next={next ?? '/'} />
-        </div>
+    <div className="auth">
+      <div className="auth-card">
+        <Brand />
+        <h1>Split the bill, keep the friends.</h1>
+        <p className="lede">
+          Trips, rent, dinners. Record who paid, and SplitVise works out who owes whom with the
+          fewest transfers.
+        </p>
+        <LoginForm next={next ?? '/'} />
       </div>
     </div>
   );
